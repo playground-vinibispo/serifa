@@ -174,18 +174,29 @@ class Editor(GtkSource.View):
         `i` e o sinal são consumidos, senão o vim os interpretaria como
         movimento.
         """
+        depurando = bool(os.environ.get("SERIFA_DEBUG"))
+
         if estado & (Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.ALT_MASK):
             self._sequencia.clear()
             return False
 
         codigo = Gdk.keyval_to_unicode(keyval)
         tecla = chr(codigo) if codigo else ""
+        if depurando:
+            print(
+                f"[tecla] {tecla!r:5} keyval={keyval} sequência={self._sequencia} "
+                f"seleção={bool(self.buffer.get_selection_bounds())}",
+                flush=True,
+            )
         if not tecla:
             self._sequencia.clear()
             return False
 
         if not self._sequencia:
-            if tecla == "v" and not self.buffer.get_selection_bounds():
+            # Sem exigir ausência de seleção: em modo normal o vim pode manter
+            # uma, e exigir que não houvesse era o que impedia a sequência de
+            # armar -- o "v" entrava e saía sem deixar rastro.
+            if tecla == "v":
                 self._sequencia.append("v")
                 self._tamanho_no_v = self.buffer.get_char_count()
             return False
@@ -193,6 +204,9 @@ class Editor(GtkSource.View):
         # Se o texto mudou desde o "v", estávamos em modo de inserção e aquele
         # "v" era só a letra v. Nada a fazer aqui.
         if self.buffer.get_char_count() != self._tamanho_no_v:
+            if depurando:
+                print("[tecla] texto mudou desde o v: era inserção, abortando",
+                      flush=True)
             self._sequencia.clear()
             return False
 
@@ -205,7 +219,10 @@ class Editor(GtkSource.View):
 
         por_dentro = self._sequencia[1] == "i"
         self._sequencia.clear()
-        return self._selecionar_bloco(tecla, por_dentro)
+        resultado = self._selecionar_bloco(tecla, por_dentro)
+        if depurando and not resultado:
+            print(f"[tecla] nenhum bloco {tecla!r} em volta do cursor", flush=True)
+        return resultado
 
     def _selecionar_bloco(self, sinal: str, por_dentro: bool) -> bool:
         texto = self.texto
