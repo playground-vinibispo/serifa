@@ -58,6 +58,22 @@ class Janela(Adw.ApplicationWindow):
         self._restaurar_estado()
         self.connect("close-request", self._ao_pedir_fechamento)
 
+        # Na fase de captura o GTK despacha da raiz até o alvo, então um
+        # controlador aqui na janela roda antes do controlador do vim, que
+        # está no editor. É o único lugar de onde dá para ver as teclas que o
+        # contexto de entrada do vim filtraria.
+        teclas = Gtk.EventControllerKey()
+        teclas.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        teclas.connect("key-pressed", self._ao_teclar)
+        self.add_controller(teclas)
+
+    def _ao_teclar(self, _controlador, keyval: int, _codigo: int, estado) -> bool:
+        if not self._editor.has_focus():
+            return False
+        if self._popup.tratar_tecla(keyval, estado):
+            return True
+        return self._editor.tratar_tecla(keyval, estado)
+
     # ---------------------------------------------------------------- UI
 
     def _montar(self) -> None:
@@ -660,13 +676,11 @@ class Janela(Adw.ApplicationWindow):
             vim.bind_property("command-bar-text", self._estado_vim, "label")
             vim.bind_property("command-text", self._estado_comando, "label")
             self._estado_vim.set_label("")
-            self._popup.vincular_vim(self._editor._controlador_vim)
             self._aplicar_atalhos_de_formatacao(ligados=False)
             botao.add_css_class("accent")
         else:
             self._estado_vim.set_label("")
             self._estado_comando.set_label("")
-            self._popup.desvincular_vim()
             self._aplicar_atalhos_de_formatacao(ligados=True)
             botao.remove_css_class("accent")
         self._editor.grab_focus()

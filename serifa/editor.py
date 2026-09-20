@@ -82,7 +82,6 @@ class Editor(GtkSource.View):
         self._vim: GtkSource.VimIMContext | None = None
         self._controlador_vim: Gtk.EventControllerKey | None = None
         self._vinculo_foco = 0
-        self._vinculo_teclas = 0
         self._sequencia: list[str] = []   # teclas desde o último "v"
         self._tamanho_no_v = 0
         self._pares_automaticos = True
@@ -131,18 +130,10 @@ class Editor(GtkSource.View):
             self._vinculo_foco = self.connect(
                 "notify::has-focus", self._ao_mudar_foco
             )
-            # Conectado ao sinal, este handler roda ANTES do tratador padrão
-            # do controlador, que é quem chama o filtro do vim.
-            self._vinculo_teclas = controlador.connect(
-                "key-pressed", self._ao_teclar_no_vim
-            )
         elif not ativo and self._vim is not None:
             self._vim.focus_out()
             self.disconnect(self._vinculo_foco)
             self._vinculo_foco = 0
-            if self._vinculo_teclas:
-                self._controlador_vim.disconnect(self._vinculo_teclas)
-                self._vinculo_teclas = 0
             self._sequencia.clear()
             self.remove_controller(self._controlador_vim)
             self._vim = None
@@ -160,7 +151,7 @@ class Editor(GtkSource.View):
 
     # ------------------------------------------- text objects no modo visual
 
-    def _ao_teclar_no_vim(self, _controlador, keyval, _codigo, estado) -> bool:
+    def tratar_tecla(self, keyval: int, estado) -> bool:
         """Faz `vi{`, `va(`, `i"` e afins funcionarem no modo visual.
 
         O modo visual do GtkSourceView não tem text objects: a biblioteca traz
@@ -173,7 +164,16 @@ class Editor(GtkSource.View):
         mão. O `v` segue para o vim, que entra em modo visual de verdade; o
         `i` e o sinal são consumidos, senão o vim os interpretaria como
         movimento.
+
+        Chamado pelo controlador que a janela instala em si mesma, e não por um
+        conectado ao controlador do vim. A diferença é decisiva: o
+        GtkEventControllerKey entrega a tecla ao contexto de entrada ANTES de
+        emitir key-pressed, e se o contexto filtrar -- que é o que o vim faz
+        com tudo em modo normal -- o sinal nunca chega a ser emitido. Só
+        modificadores soltos apareciam ali.
         """
+        if self._vim is None:
+            return False
         depurando = bool(os.environ.get("SERIFA_DEBUG"))
 
         if estado & (Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.ALT_MASK):

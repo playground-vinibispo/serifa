@@ -249,18 +249,6 @@ class Popup:
         self._balao.set_has_arrow(False)
         self._balao.set_parent(editor)
 
-        # Com o vim desligado, o balão escuta por um controlador próprio.
-        # Com o vim ligado, ele passa a escutar pelo controlador DO VIM --
-        # ver vincular_vim, que explica por quê.
-        self._controlador = Gtk.EventControllerKey()
-        self._controlador.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
-        self._controlador.connect("key-pressed", self._ao_teclar)
-        editor.add_controller(self._controlador)
-        self._controlador_vim = None
-        self._vinculo_vim = 0
-
-        # Duas origens, com pesos diferentes: só edição ABRE o balão; mover o
-        # cursor apenas o mantém em dia, ou o fecha. Ver _reavaliar.
         editor.buffer.connect_after("changed", self._agendar_por_edicao)
         editor.buffer.connect("notify::cursor-position", self._agendar_por_movimento)
 
@@ -347,37 +335,6 @@ class Popup:
 
     # ------------------------------------------------------ convívio com o vim
 
-    def vincular_vim(self, controlador_vim: Gtk.EventControllerKey | None) -> None:
-        """Passa a escutar teclas pelo controlador do vim.
-
-        A tentativa anterior era pôr o controlador do vim em
-        PropagationPhase.NONE enquanto o balão estivesse aberto, para as setas
-        e o Enter chegarem aqui. Isso desligava o vim inteiro: com o balão
-        aberto, o modo normal parava de funcionar, e como o vim deixa o
-        TextView em overwrite para desenhar o cursor em bloco, cada tecla
-        sobrescrevia uma letra em vez de navegar.
-
-        Conectar ao sinal ``key-pressed`` do controlador do vim resolve sem
-        desligar nada: um handler conectado roda ANTES do tratador padrão da
-        classe, que é justamente quem chama o filtro do vim. Devolvendo True,
-        a tecla é nossa e o vim não a vê; devolvendo False, ela segue para o
-        vim como se nada tivesse acontecido.
-        """
-        self.desvincular_vim()
-        if controlador_vim is None:
-            return
-        self._vinculo_vim = controlador_vim.connect("key-pressed", self._ao_teclar)
-        self._controlador_vim = controlador_vim
-        # O nosso sai do caminho para a tecla não ser tratada duas vezes.
-        self._controlador.set_propagation_phase(Gtk.PropagationPhase.NONE)
-
-    def desvincular_vim(self) -> None:
-        if self._vinculo_vim and self._controlador_vim is not None:
-            self._controlador_vim.disconnect(self._vinculo_vim)
-        self._vinculo_vim = 0
-        self._controlador_vim = None
-        self._controlador.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
-
     # ---------------------------------------------------------------- UI
 
     def _preencher(self) -> None:
@@ -418,7 +375,13 @@ class Popup:
 
     # ------------------------------------------------------------ teclado
 
-    def _ao_teclar(self, _controlador, keyval: int, _keycode: int, estado) -> bool:
+    def tratar_tecla(self, keyval: int, estado) -> bool:
+        """Navegação do balão. Chamado pelo controlador da janela.
+
+        Precisa vir de um ancestral: um controlador no próprio editor, ou um
+        handler pendurado no controlador do vim, nunca veria estas teclas com
+        o vim ligado -- o contexto de entrada filtra antes de o sinal sair.
+        """
         if not self.visivel:
             return False
 
