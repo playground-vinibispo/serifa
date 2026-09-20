@@ -34,6 +34,17 @@ except (ValueError, ImportError):  # pragma: no cover - depende do sistema
 
 FECHAMENTO = {"{": "}", "[": "]", "(": ")", "$": "$"}
 
+# Teclas que não são "uma tecla" para efeito de sequência: chegam sozinhas no
+# meio de qualquer combinação. O caso que interessa é o Shift, sem o qual não
+# se digita "{" -- ele aparece entre o "i" e o "{" de um vi{.
+MODIFICADORES = {
+    Gdk.KEY_Shift_L, Gdk.KEY_Shift_R, Gdk.KEY_Control_L, Gdk.KEY_Control_R,
+    Gdk.KEY_Alt_L, Gdk.KEY_Alt_R, Gdk.KEY_Super_L, Gdk.KEY_Super_R,
+    Gdk.KEY_Meta_L, Gdk.KEY_Meta_R, Gdk.KEY_Caps_Lock, Gdk.KEY_Shift_Lock,
+    Gdk.KEY_Num_Lock, Gdk.KEY_Mode_switch,
+    Gdk.KEY_ISO_Level3_Shift, Gdk.KEY_ISO_Level5_Shift,
+}
+
 # \begin{ambiente} seguido só de espaço até o fim da linha.
 ABERTURA_DE_AMBIENTE = re.compile(r"\\begin\{([A-Za-z@*]+)\}[^\n]*$")
 
@@ -178,6 +189,13 @@ class Editor(GtkSource.View):
 
         if estado & (Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.ALT_MASK):
             self._sequencia.clear()
+            return False
+
+        if keyval in MODIFICADORES:
+            # Não limpa a sequência: era exatamente isto que quebrava o vi{.
+            # O "{" precisa de Shift, o Shift chega como tecla própria entre o
+            # "i" e o "{", e a sequência morria aí -- o "{" chegava com a
+            # máquina já zerada.
             return False
 
         codigo = Gdk.keyval_to_unicode(keyval)
