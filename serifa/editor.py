@@ -13,6 +13,7 @@ Um GtkSource.View configurado para LaTeX. O que há de menos óbvio aqui:
 
 from __future__ import annotations
 
+import os
 import re
 
 import gi
@@ -21,7 +22,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("GtkSource", "5")
 gi.require_version("Gdk", "4.0")
 
-from gi.repository import Gdk, GObject, Gtk, GtkSource
+from gi.repository import Gdk, GLib, GObject, Gtk, GtkSource
 
 from .blocos import alvo
 
@@ -207,17 +208,45 @@ class Editor(GtkSource.View):
         return self._selecionar_bloco(tecla, por_dentro)
 
     def _selecionar_bloco(self, sinal: str, por_dentro: bool) -> bool:
+        texto = self.texto
         cursor = self.buffer.get_iter_at_mark(self.buffer.get_insert())
-        faixa = alvo(self.texto, cursor.get_offset(), sinal, por_dentro)
+        faixa = alvo(texto, cursor.get_offset(), sinal, por_dentro)
         if faixa is None:
             return False
+
         inicio, fim = faixa
-        # Cursor no fim e âncora no começo, como o vim deixa.
+        self._aplicar_selecao(inicio, fim)
+        # O vim está em modo visual de verdade -- deixamos o "v" passar -- e
+        # pode reajustar a seleção depois de nós: a dele é inclusiva do
+        # caractere sob o cursor, a do GTK é exclusiva no fim. Em vez de supor
+        # o sentido do ajuste e errar por um caractere para algum lado, a
+        # seleção é medida num idle e reposta se tiver mudado.
+        GLib.idle_add(self._corrigir_selecao, inicio, fim, texto)
+        return True
+
+    def _aplicar_selecao(self, inicio: int, fim: int) -> None:
+        # Cursor no fim e âncora no começo, que é como o vim deixa o visual.
         self.buffer.select_range(
             self.buffer.get_iter_at_offset(fim),
             self.buffer.get_iter_at_offset(inicio),
         )
-        return True
+
+    def _corrigir_selecao(self, inicio: int, fim: int, texto: str) -> bool:
+        limites = self.buffer.get_selection_bounds()
+        atual = (
+            (limites[0].get_offset(), limites[1].get_offset()) if limites else None
+        )
+        if atual != (inicio, fim):
+            if os.environ.get("SERIFA_DEBUG"):
+                print(
+                    f"[bloco] queria ({inicio},{fim})={texto[inicio:fim]!r}, "
+                    f"o vim deixou {atual}; repondo",
+                    flush=True,
+                )
+            self._aplicar_selecao(inicio, fim)
+        elif os.environ.get("SERIFA_DEBUG"):
+            print(f"[bloco] ({inicio},{fim})={texto[inicio:fim]!r} intacta", flush=True)
+        return GLib.SOURCE_REMOVE
 
     # ------------------------------------------------------- pares e ambientes
 

@@ -82,6 +82,8 @@ def montar_janela_completa(app):
 
     controlador_vim.connect("key-pressed", espiar)
 
+    import os
+    os.environ.setdefault("SERIFA_DEBUG", "1")   # liga o relato de [bloco]
     print(f"variante=janela  vim={editor.vim_ativo}  "
           f"overwrite={editor.get_overwrite()}", flush=True)
     print("Ponha o cursor dentro de {...} e tente: viw, depois ci{, depois vi{",
