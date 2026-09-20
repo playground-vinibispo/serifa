@@ -184,6 +184,20 @@ class Janela(Adw.ApplicationWindow):
         )
         cabecalho.pack_start(botao_sumario)
 
+        formatacao = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        formatacao.add_css_class("linked")
+        for nome, _comando, icone, rotulo in self.FORMATOS:
+            if icone is None:
+                continue
+            botao_formato = Gtk.Button(icon_name=icone)
+            dica = self.ATALHOS_DE_FORMATACAO.get(nome, "")
+            botao_formato.set_tooltip_text(
+                f"{rotulo} ({dica.replace('<Control>', 'Ctrl+')})" if dica else rotulo
+            )
+            botao_formato.set_action_name(f"win.{nome}")
+            formatacao.append(botao_formato)
+        cabecalho.pack_start(formatacao)
+
         self._titulo = Adw.WindowTitle(title="Serifa", subtitle="nenhum arquivo")
         cabecalho.set_title_widget(self._titulo)
 
@@ -197,6 +211,10 @@ class Janela(Adw.ApplicationWindow):
         secao_ver.append("Preview", "win.preview")
         secao_ver.append("Conferir texto", "win.conferir")
         menu.append_section(None, secao_ver)
+        secao_formato = Gio.Menu()
+        for nome, _comando, _icone, rotulo in self.FORMATOS:
+            secao_formato.append(rotulo, f"win.{nome}")
+        menu.append_submenu("Formatar", secao_formato)
         secao_zoom = Gio.Menu()
         secao_zoom.append("Ampliar PDF", "win.zoom-mais")
         secao_zoom.append("Reduzir PDF", "win.zoom-menos")
@@ -266,8 +284,10 @@ class Janela(Adw.ApplicationWindow):
             "abrir": (self.abrir_dialogo, "<Control>o"),
             "salvar": (self.salvar, "<Control>s"),
             "salvar-como": (self.salvar_como, "<Control><Shift>s"),
-            "compilar": (self.compilar, "<Control>b"),
-            "compilar-f5": (self.compilar, "F5"),
+            # Ctrl+B saiu de compilar e foi para negrito, que é onde o
+            # mundo inteiro espera achá-lo.
+            "compilar": (self.compilar, "F5"),
+            "compilar-enter": (self.compilar, "<Control>Return"),
             "buscar": (self._focar_busca, "<Control>f"),
             "vim": (lambda: self._botao_vim.set_active(not self._botao_vim.get_active()), "<Control><Alt>v"),
             "preview": (self._alternar_preview, "<Control><Shift>v"),
@@ -278,6 +298,9 @@ class Janela(Adw.ApplicationWindow):
             "conferir": (self.conferir, "<Control><Shift>c"),
             "continua": (self._alternar_continua, None),
         }
+        for nome, comando, _icone, _rotulo in self.FORMATOS:
+            atalhos[nome] = (lambda c=comando: self.formatar(c), None)
+
         app = None
         for nome, (funcao, atalho) in atalhos.items():
             acao = Gio.SimpleAction.new(nome, None)
@@ -287,6 +310,8 @@ class Janela(Adw.ApplicationWindow):
                 app = app or self.get_application()
                 if app is not None:
                     app.set_accels_for_action(f"win.{nome}", [atalho])
+
+        self._aplicar_atalhos_de_formatacao(ligados=True)
 
     # ------------------------------------------------------- arquivo
 
@@ -449,6 +474,46 @@ class Janela(Adw.ApplicationWindow):
         if diagnostico and diagnostico.linha:
             self._editor.ir_para_linha(diagnostico.linha)
 
+    # ------------------------------------------------------------ formatação
+
+    # (ação, comando LaTeX, ícone, rótulo no menu)
+    FORMATOS = [
+        ("negrito", "textbf", "format-text-bold-symbolic", "Negrito"),
+        ("italico", "textit", "format-text-italic-symbolic", "Itálico"),
+        ("sublinhado", "underline", "format-text-underline-symbolic", "Sublinhado"),
+        ("monoespaco", "texttt", None, "Monoespaçado"),
+        ("enfase", "emph", None, "Ênfase"),
+        ("citacao", "enquote", None, "Entre aspas"),
+        ("nota", "footnote", None, "Nota de rodapé"),
+    ]
+
+    def formatar(self, comando: str) -> None:
+        """Envolve a seleção em \\comando{...}, ou abre as chaves no cursor."""
+        buffer = self._editor.buffer
+        abertura, fechamento = f"\\{comando}{{", "}"
+
+        buffer.begin_user_action()
+        # No PyGObject isto devolve (inicio, fim) havendo seleção e () sem --
+        # não um booleano na frente, como a assinatura em C sugere.
+        limites = buffer.get_selection_bounds()
+        if limites:
+            inicio, fim = limites
+            selecionado = buffer.get_text(inicio, fim, True)
+            marca = buffer.create_mark(None, inicio, True)
+            buffer.delete(inicio, fim)
+            onde = buffer.get_iter_at_mark(marca)
+            buffer.insert(onde, f"{abertura}{selecionado}{fechamento}")
+            buffer.delete_mark(marca)
+        else:
+            cursor = buffer.get_iter_at_mark(buffer.get_insert())
+            dentro = cursor.get_offset() + len(abertura)
+            # Inserido de uma vez: os pares automáticos só reagem a caractere
+            # solto, então o } daqui não vira dois.
+            buffer.insert(cursor, abertura + fechamento)
+            buffer.place_cursor(buffer.get_iter_at_offset(dentro))
+        buffer.end_user_action()
+        self._editor.grab_focus()
+
     # -------------------------------------------------------- conferidor
 
     def conferir(self) -> None:
@@ -596,11 +661,13 @@ class Janela(Adw.ApplicationWindow):
             vim.bind_property("command-text", self._estado_comando, "label")
             self._estado_vim.set_label("")
             self._popup.vincular_vim(self._editor._controlador_vim)
+            self._aplicar_atalhos_de_formatacao(ligados=False)
             botao.add_css_class("accent")
         else:
             self._estado_vim.set_label("")
             self._estado_comando.set_label("")
             self._popup.desvincular_vim()
+            self._aplicar_atalhos_de_formatacao(ligados=True)
             botao.remove_css_class("accent")
         self._editor.grab_focus()
         self._guardar_estado()
@@ -625,6 +692,23 @@ class Janela(Adw.ApplicationWindow):
 
     def _avisar(self, mensagem: str) -> None:
         self._toasts.add_toast(Adw.Toast(title=mensagem, timeout=3))
+
+    # os dois que o mundo espera; os demais ficam só no menu, para não
+    # atropelar mais teclas do vim do que o necessário
+    ATALHOS_DE_FORMATACAO = {"negrito": "<Control>b", "italico": "<Control>i"}
+
+    def _aplicar_atalhos_de_formatacao(self, ligados: bool) -> None:
+        """Com o vim ligado, Ctrl+B e Ctrl+I voltam a ser dele.
+
+        Acelerador de janela é resolvido antes dos controladores do widget, ou
+        seja, venceria o vim sem nem avisar. Quem usa vim espera Ctrl+B como
+        página acima; os botões da barra continuam valendo de qualquer jeito.
+        """
+        app = self.get_application()
+        if app is None:
+            return
+        for nome, atalho in self.ATALHOS_DE_FORMATACAO.items():
+            app.set_accels_for_action(f"win.{nome}", [atalho] if ligados else [])
 
     # ------------------------------------------------------------ fechamento
 
