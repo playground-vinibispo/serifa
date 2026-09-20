@@ -326,6 +326,7 @@ class Janela(Adw.ApplicationWindow):
 
         self._arquivo = caminho
         self._sujo = False
+        self._popup.reiniciar()
         self._chaves.definir_pasta(caminho.parent)
         self._acervo.definir_pasta(caminho.parent)
         self._chaves.atualizar(texto)
@@ -594,10 +595,12 @@ class Janela(Adw.ApplicationWindow):
             vim.bind_property("command-bar-text", self._estado_vim, "label")
             vim.bind_property("command-text", self._estado_comando, "label")
             self._estado_vim.set_label("")
+            self._popup.vincular_vim(self._editor._controlador_vim)
             botao.add_css_class("accent")
         else:
             self._estado_vim.set_label("")
             self._estado_comando.set_label("")
+            self._popup.desvincular_vim()
             botao.remove_css_class("accent")
         self._editor.grab_focus()
         self._guardar_estado()

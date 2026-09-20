@@ -229,7 +229,7 @@ class Popup:
         self._contexto = Contexto("", "", 0)
         self._temporizador = 0
         self._suprimir = False
-        self._silenciado = False
+        self._por_edicao = False
 
         self._lista = Gtk.ListBox()
         self._lista.set_activate_on_single_click(True)
@@ -249,13 +249,20 @@ class Popup:
         self._balao.set_has_arrow(False)
         self._balao.set_parent(editor)
 
-        teclas = Gtk.EventControllerKey()
-        teclas.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
-        teclas.connect("key-pressed", self._ao_teclar)
-        editor.add_controller(teclas)
+        # Com o vim desligado, o balão escuta por um controlador próprio.
+        # Com o vim ligado, ele passa a escutar pelo controlador DO VIM --
+        # ver vincular_vim, que explica por quê.
+        self._controlador = Gtk.EventControllerKey()
+        self._controlador.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        self._controlador.connect("key-pressed", self._ao_teclar)
+        editor.add_controller(self._controlador)
+        self._controlador_vim = None
+        self._vinculo_vim = 0
 
-        editor.buffer.connect_after("changed", self._agendar)
-        editor.buffer.connect("notify::cursor-position", self._agendar)
+        # Duas origens, com pesos diferentes: só edição ABRE o balão; mover o
+        # cursor apenas o mantém em dia, ou o fecha. Ver _reavaliar.
+        editor.buffer.connect_after("changed", self._agendar_por_edicao)
+        editor.buffer.connect("notify::cursor-position", self._agendar_por_movimento)
 
     # ------------------------------------------------------------- estado
 
@@ -263,13 +270,41 @@ class Popup:
     def visivel(self) -> bool:
         return self._balao.get_visible()
 
-    def _agendar(self, *_args) -> None:
+    def reiniciar(self) -> None:
+        """Esquece o que estava pendente. Chamado ao trocar de arquivo.
+
+        Carregar um arquivo dispara ``changed`` como qualquer digitação, e o
+        temporizador de 60 ms junta essa carga com o movimento de cursor que
+        vem logo atrás, virando uma avaliação só -- que então se acha
+        legitimamente "por edição" e abre o balão sem ninguém ter digitado.
+        """
+        if self._temporizador:
+            GLib.source_remove(self._temporizador)
+            self._temporizador = 0
+        self._por_edicao = False
+        self._suprimir = False
+        self.fechar()
+
+    def _agendar_por_edicao(self, *_args) -> None:
+        self._por_edicao = True
+        self._agendar()
+
+    def _agendar_por_movimento(self, *_args) -> None:
+        self._agendar()
+
+    def _agendar(self) -> None:
         if self._temporizador:
             GLib.source_remove(self._temporizador)
         self._temporizador = GLib.timeout_add(60, self._reavaliar)
 
     def _reavaliar(self) -> bool:
         self._temporizador = 0
+        # Consumido aqui no topo, antes de qualquer saída antecipada. Consumir
+        # lá embaixo deixava o sinalizador pendurado quando a avaliação saía
+        # cedo -- por contexto vazio, por exemplo, que é o caso logo depois de
+        # abrir um arquivo --, e o movimento seguinte herdava a edição alheia e
+        # abria o balão sem ninguém ter digitado nada.
+        por_edicao, self._por_edicao = self._por_edicao, False
         if self._suprimir:
             # A própria inserção que acabamos de fazer dispara uma
             # reavaliação; sem esta trava o popup reabriria sobre o que o
@@ -291,36 +326,57 @@ class Popup:
             self.fechar()
             return GLib.SOURCE_REMOVE
 
+        # Só abre por edição. Andar com o cursor sobre um \begin{...} que já
+        # está escrito não é pedido de completação -- e era isso que derrubava
+        # o modo normal do vim: o balão abria ao passar por cima, silenciava o
+        # vim para poder usar as setas, e a tecla seguinte caía no TextView,
+        # que está em overwrite por causa do cursor em bloco. O "l" de andar
+        # para a direita virava um "l" sobrescrevendo a letra.
+        if not por_edicao and not self._balao.get_visible():
+            return GLib.SOURCE_REMOVE
+
         self._preencher()
         self._posicionar(cursor)
         self._balao.popup()
         # A nativa e esta não podem aparecer juntas.
         self._editor.get_completion().hide()
-        self._silenciar_vim(True)
         return GLib.SOURCE_REMOVE
 
     def fechar(self) -> None:
         self._balao.popdown()
-        self._silenciar_vim(False)
 
-    def _silenciar_vim(self, silenciar: bool) -> None:
-        """Liga e desliga a escuta do vim, sem consultar o balão.
+    # ------------------------------------------------------ convívio com o vim
 
-        Antes isto dependia de `self._balao.get_visible()`, e bastava a
-        visibilidade discordar do estado real uma vez para o vim ficar em
-        PropagationPhase.NONE para sempre -- surdo, com o modo normal
-        deixando de bloquear a digitação. O estado agora é explícito.
+    def vincular_vim(self, controlador_vim: Gtk.EventControllerKey | None) -> None:
+        """Passa a escutar teclas pelo controlador do vim.
+
+        A tentativa anterior era pôr o controlador do vim em
+        PropagationPhase.NONE enquanto o balão estivesse aberto, para as setas
+        e o Enter chegarem aqui. Isso desligava o vim inteiro: com o balão
+        aberto, o modo normal parava de funcionar, e como o vim deixa o
+        TextView em overwrite para desenhar o cursor em bloco, cada tecla
+        sobrescrevia uma letra em vez de navegar.
+
+        Conectar ao sinal ``key-pressed`` do controlador do vim resolve sem
+        desligar nada: um handler conectado roda ANTES do tratador padrão da
+        classe, que é justamente quem chama o filtro do vim. Devolvendo True,
+        a tecla é nossa e o vim não a vê; devolvendo False, ela segue para o
+        vim como se nada tivesse acontecido.
         """
-        if silenciar == self._silenciado:
+        self.desvincular_vim()
+        if controlador_vim is None:
             return
-        controlador = getattr(self._editor, "_controlador_vim", None)
-        if controlador is None:
-            self._silenciado = False
-            return
-        controlador.set_propagation_phase(
-            Gtk.PropagationPhase.NONE if silenciar else Gtk.PropagationPhase.CAPTURE
-        )
-        self._silenciado = silenciar
+        self._vinculo_vim = controlador_vim.connect("key-pressed", self._ao_teclar)
+        self._controlador_vim = controlador_vim
+        # O nosso sai do caminho para a tecla não ser tratada duas vezes.
+        self._controlador.set_propagation_phase(Gtk.PropagationPhase.NONE)
+
+    def desvincular_vim(self) -> None:
+        if self._vinculo_vim and self._controlador_vim is not None:
+            self._controlador_vim.disconnect(self._vinculo_vim)
+        self._vinculo_vim = 0
+        self._controlador_vim = None
+        self._controlador.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
 
     # ---------------------------------------------------------------- UI
 

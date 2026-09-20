@@ -1,0 +1,5 @@
+#!/usr/bin/bash
+# Bisect do modo vim. Uso:
+#   bin/diagnostico-vim minimo   -> só a receita oficial do GtkSourceView
+#   bin/diagnostico-vim serifa   -> a mesma receita + o controlador do popup
+exec /usr/bin/python3.12 "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/diagnostico_vim.py" "$@"
