@@ -17,6 +17,7 @@ from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk, GtkSource
 
 from .build import Compilador, Diagnostico
 from .complete import FonteDeChaves, preparar_snippets
+from .contexto import Acervo, Popup
 from .editor import Editor
 from .preview import Preview
 
@@ -85,6 +86,11 @@ class Janela(Adw.ApplicationWindow):
         completacao.add_provider(citacoes)
 
         completacao.set_property("select-on-show", True)
+
+        # Dentro de \cite{, \ref{, \begin{ e \input{ quem responde é um
+        # popup próprio: ver o cabeçalho de serifa/contexto.py para o motivo.
+        self._acervo = Acervo()
+        self._popup = Popup(self._editor, self._acervo)
 
         rolagem = Gtk.ScrolledWindow()
         rolagem.set_child(self._editor)
@@ -311,6 +317,7 @@ class Janela(Adw.ApplicationWindow):
         self._arquivo = caminho
         self._sujo = False
         self._chaves.definir_pasta(caminho.parent)
+        self._acervo.definir_pasta(caminho.parent)
         self._chaves.atualizar(texto)
         self._atualizar_titulo()
         self._reconstruir_sumario()
@@ -351,6 +358,7 @@ class Janela(Adw.ApplicationWindow):
         if arquivo is not None:
             self._arquivo = Path(arquivo.get_path())
             self._chaves.definir_pasta(self._arquivo.parent)
+            self._acervo.definir_pasta(self._arquivo.parent)
             self.salvar()
 
     # ----------------------------------------------------- compilação

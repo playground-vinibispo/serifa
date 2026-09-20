@@ -31,7 +31,8 @@ caminho é gtk-rs: mesmos widgets, mesma aparência, sem trocar de arquitetura.
 | **Preview** | Rolagem contínua, só rasteriza o que está à vista. `Ctrl+scroll` dá zoom, `Ctrl+0` ajusta à largura. Recompilar **não** joga a rolagem pro topo. |
 | **Compilação** | `Ctrl+B` ou `F5`, assíncrona. Usa o `scripts/compilar.sh` do projeto quando existe — é ele que sabe nomear o PDF pela pasta. Contínua por padrão: 1,4 s depois de você parar de digitar. |
 | **Erros** | O `.log` é lido e desdobrado (o TeX quebra as mensagens em 79 colunas). Erros e avisos viram lista; clicar pula pra linha. |
-| **Completação** | 144 snippets de comandos, letras gregas e ambientes, com tab stops. Mais as palavras do documento e as chaves dos `.bib` do projeto. |
+| **Completação geral** | 144 snippets de comandos, letras gregas e ambientes, com tab stops, mais as palavras do documento. É a nativa do GtkSourceView. |
+| **Completação por contexto** | Dentro das chaves, um popup próprio: `\cite{` oferece as chaves dos `.bib` com o título ao lado, `\ref{` os `\label` do documento, `\begin{` os ambientes, `\input{` os `.tex` e `\includegraphics{` as imagens. Casamento por subsequência — `eif` acha `einstein_infeld`. Aceitar pula o `}`. |
 | **Pares automáticos** | `{`, `[`, `(`, `$` fecham sozinhos com o cursor no meio; `\begin{x}` + Enter escreve o `\end{x}`. Convivem com o vim: em modo normal não há inserção de texto, então nada dispara. |
 | **Sumário** | Seções do documento na lateral (`F9`), inclusive títulos que quebram linha. Clicar pula. |
 | **Contagem** | Palavras de prosa na barra de estado — comandos, matemática e comentários fora da conta. |
@@ -63,13 +64,29 @@ Na próxima abertura o `Spelling` acha `pt_BR` sozinho.
 
 Ficam registradas porque as duas custam horas e nenhuma aparece na documentação.
 
-**1. Provedor de completação próprio segfaulta.** O par
-`populate_async`/`populate_finish` do GtkSourceView 5.14 estoura em C logo
-depois que `populate_finish` devolve o modelo, sem frame Python no backtrace.
-Acontece até num provedor mínimo de três itens fixos, com ou sem referência viva
-para a GTask, devolvendo valor ou booleano. É bug de binding. A completação
-sensível ao contexto (oferecer chaves de `.bib` só dentro de `\cite{`) morreu
-com ele; o que sobrou usa as peças em C, que não passam por vfunc de Python.
+**1. `GtkSourceCompletionProvider` não é implementável em PyGObject.** O par
+`populate_async`/`populate_finish` estoura em C. O backtrace do core diz onde:
+
+```
+#0  gtk_source_completion_context_set_proposals_for_provider
+#1  gtk_source_completion_context_populate_cb      ← callback do GtkSourceView
+#2..#10 pygi_closure / ffi                         ← o populate_finish em Python
+#11 g_task_return_now
+```
+
+O `populate_cb` recebe um `result` que não é a GTask — daí os dois
+`g_task_get_source_object: assertion 'G_IS_TASK (task)' failed` que aparecem
+antes do estouro — e um `user_data` corrompido. A causa é o binding não ter como
+repassar o `user_data` original de um `GAsyncReadyCallback` que chega por vfunc.
+Acontece num provedor mínimo de três itens fixos, completando a task na hora ou
+num idle, devolvendo valor ou booleano, com ou sem referência viva para a GTask.
+Não há como contornar do lado Python.
+
+Por isso a completação por contexto é um `Gtk.Popover` próprio, em
+`serifa/contexto.py`. Custou mais código e deu de volta o que o provedor daria —
+com uma vantagem: controlando a inserção, chaves como `einstein_infeld` não
+dependem do que o scanner de palavras do `GtkSourceCompletionWords` considera
+uma palavra.
 
 **2. O `snippets.rng` do GtkSourceView mente.** O parser real:
 
@@ -89,7 +106,8 @@ serifa/
 ├── editor.py     GtkSource.View, vim, pares automáticos, ortografia
 ├── preview.py    Poppler + cairo, rolagem contínua
 ├── build.py      latexmk assíncrono e leitura do .log
-├── complete.py   geração dos snippets e as chaves de .bib
+├── complete.py   geração dos snippets
+├── contexto.py   completação por contexto: detecção, acervo e popup
 ├── window.py     a janela e as ações
 └── main.py       Adw.Application
 ```
