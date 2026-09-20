@@ -1,4 +1,4 @@
-"""A janela: sumário, editor, preview, diagnósticos e barra de estado."""
+r"""A janela: sumário, editor, preview, diagnósticos e barra de estado."""
 
 from __future__ import annotations
 
@@ -56,6 +56,7 @@ class Janela(Adw.ApplicationWindow):
         self._montar()
         self._instalar_acoes()
         self._restaurar_estado()
+        self.connect("close-request", self._ao_pedir_fechamento)
 
     # ---------------------------------------------------------------- UI
 
@@ -323,8 +324,8 @@ class Janela(Adw.ApplicationWindow):
         self._reconstruir_sumario()
         self._atualizar_contagem()
 
-        pdf = self._compilador._pdf_de(caminho, caminho.parent)
-        if pdf and pdf.exists():
+        pdf = Compilador._pdf_de(caminho, caminho.parent)
+        if pdf.exists():
             self._preview.carregar(pdf)
         self._guardar_estado()
 
@@ -332,15 +333,9 @@ class Janela(Adw.ApplicationWindow):
         if self._arquivo is None:
             self.salvar_como()
             return False
-        try:
-            self._arquivo.write_text(self._editor.texto, encoding="utf-8")
-        except OSError as erro:
-            self._avisar(f"Não deu para salvar: {erro}")
+        if not self._gravar():
             return False
-        self._editor.buffer.set_modified(False)
-        self._sujo = False
-        self._atualizar_titulo()
-        self.compilar()
+        self._compilador.compilar(self._arquivo)
         return True
 
     def salvar_como(self) -> None:
@@ -364,25 +359,41 @@ class Janela(Adw.ApplicationWindow):
     # ----------------------------------------------------- compilação
 
     def compilar(self) -> None:
+        """Ctrl+B: grava e compila o arquivo de verdade.
+
+        Gravar aqui é decisão do usuário, não efeito colateral -- pedir para
+        compilar é pedir para materializar o que está na tela.
+        """
         if self._arquivo is None:
             self._avisar("Salve o arquivo antes de compilar")
             return
-        if self._sujo:
-            try:
-                self._arquivo.write_text(self._editor.texto, encoding="utf-8")
-                self._editor.buffer.set_modified(False)
-                self._sujo = False
-                self._atualizar_titulo()
-            except OSError:
-                pass
+        if self._sujo and not self._gravar():
+            return
         self._compilador.compilar(self._arquivo)
 
-    def _ao_comecar_compilacao(self, _compilador) -> None:
-        self._estado_compilacao.set_label("compilando…")
+    def previsualizar(self) -> None:
+        """A contínua: compila o buffer sem encostar no arquivo do usuário."""
+        if self._arquivo is None:
+            return
+        self._compilador.compilar_previa(self._editor.texto, self._arquivo)
+
+    def _gravar(self) -> bool:
+        try:
+            self._arquivo.write_text(self._editor.texto, encoding="utf-8")
+        except OSError as erro:
+            self._avisar(f"Não deu para salvar: {erro}")
+            return False
+        self._editor.buffer.set_modified(False)
+        self._sujo = False
+        self._atualizar_titulo()
+        return True
+
+    def _ao_comecar_compilacao(self, _compilador, previa: bool) -> None:
+        self._estado_compilacao.set_label("prévia…" if previa else "compilando…")
         self._botao_compilar.set_sensitive(False)
 
     def _ao_terminar_compilacao(
-        self, _compilador, sucesso: bool, pdf: str, diagnosticos
+        self, _compilador, sucesso: bool, pdf: str, diagnosticos, previa: bool
     ) -> None:
         self._botao_compilar.set_sensitive(True)
         self._diagnosticos = list(diagnosticos)
@@ -395,7 +406,7 @@ class Janela(Adw.ApplicationWindow):
         if sucesso:
             paginas = self._preview.paginas
             plural = "s" if paginas != 1 else ""
-            resumo = f"ok · {paginas} página{plural}"
+            resumo = f"{'prévia' if previa else 'ok'} · {paginas} página{plural}"
             if avisos:
                 resumo += f" · {avisos} aviso{'s' if avisos != 1 else ''}"
             self._estado_compilacao.set_label(resumo)
@@ -537,7 +548,7 @@ class Janela(Adw.ApplicationWindow):
 
     def _tarefa_compilacao(self) -> bool:
         self._temporizador_compilacao = 0
-        self.compilar()
+        self.previsualizar()
         return GLib.SOURCE_REMOVE
 
     def _ao_mover_cursor(self, _editor, linha: int, coluna: int) -> None:
@@ -591,6 +602,39 @@ class Janela(Adw.ApplicationWindow):
 
     def _avisar(self, mensagem: str) -> None:
         self._toasts.add_toast(Adw.Toast(title=mensagem, timeout=3))
+
+    # ------------------------------------------------------------ fechamento
+
+    def _ao_pedir_fechamento(self, *_args) -> bool:
+        """Bloqueia o fechamento enquanto houver alteração não gravada."""
+        if not self._sujo or self._arquivo is None:
+            return False  # deixa fechar
+
+        dialogo = Adw.AlertDialog(
+            heading="Salvar antes de sair?",
+            body=f"As alterações em {self._arquivo.name} não foram gravadas.",
+        )
+        dialogo.add_response("cancelar", "Cancelar")
+        dialogo.add_response("descartar", "Descartar")
+        dialogo.add_response("salvar", "Salvar")
+        dialogo.set_response_appearance("descartar", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialogo.set_response_appearance("salvar", Adw.ResponseAppearance.SUGGESTED)
+        dialogo.set_default_response("salvar")
+        dialogo.set_close_response("cancelar")
+        dialogo.choose(self, None, self._ao_responder_fechamento)
+        return True  # segura a janela até a resposta
+
+    def _ao_responder_fechamento(self, dialogo, resultado) -> None:
+        try:
+            resposta = dialogo.choose_finish(resultado)
+        except GLib.Error:
+            return
+        if resposta == "cancelar":
+            return
+        if resposta == "salvar" and not self._gravar():
+            return
+        self._sujo = False  # o close-request seguinte passa direto
+        self.close()
 
     # -------------------------------------------------------- persistência
 

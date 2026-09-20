@@ -29,7 +29,9 @@ caminho é gtk-rs: mesmos widgets, mesma aparência, sem trocar de arquitetura.
 |---|---|
 | **Modo vim** | Botão `VIM` na barra de título, ou `Ctrl+Alt+V`. A barra de comandos (`:w`, `/busca`) aparece na barra de estado. O estado fica guardado entre sessões. |
 | **Preview** | Rolagem contínua, só rasteriza o que está à vista. `Ctrl+scroll` dá zoom, `Ctrl+0` ajusta à largura. Recompilar **não** joga a rolagem pro topo. |
-| **Compilação** | `Ctrl+B` ou `F5`, assíncrona. Usa o `scripts/compilar.sh` do projeto quando existe — é ele que sabe nomear o PDF pela pasta. Contínua por padrão: 1,4 s depois de você parar de digitar. |
+| **Prévia contínua** | 1,4 s depois de você parar de digitar, **sem tocar no seu arquivo**: o buffer vai para um arquivo sombra no cache e é compilado de lá, com o diretório de trabalho na pasta do texto — é esse detalhe que mantém `\input{../../preambulo.tex}` resolvendo, já que o TeX resolve caminho relativo contra o diretório de trabalho e não contra o arquivo. |
+| **Compilação** | `Ctrl+B` ou `F5`: grava o seu `.tex` e compila ele mesmo, pelo `scripts/compilar.sh` do projeto quando existe — é ele que sabe nomear o PDF pela pasta. |
+| **Salvar** | `Ctrl+S` grava e compila. Nada mais escreve no seu arquivo: gravar é sempre decisão sua. Fechar com alterações pendentes pergunta antes. |
 | **Erros** | O `.log` é lido e desdobrado (o TeX quebra as mensagens em 79 colunas). Erros e avisos viram lista; clicar pula pra linha. |
 | **Completação geral** | 144 snippets de comandos, letras gregas e ambientes, com tab stops, mais as palavras do documento. É a nativa do GtkSourceView. |
 | **Completação por contexto** | Dentro das chaves, um popup próprio: `\cite{` oferece as chaves dos `.bib` com o título ao lado, `\ref{` os `\label` do documento, `\begin{` os ambientes, `\input{` os `.tex` e `\includegraphics{` as imagens. Casamento por subsequência — `eif` acha `einstein_infeld`. Aceitar pula o `}`. |
@@ -42,7 +44,7 @@ caminho é gtk-rs: mesmos widgets, mesma aparência, sem trocar de arquitetura.
 
 ## Atalhos
 
-`Ctrl+O` abrir · `Ctrl+S` salvar (e compilar) · `Ctrl+Shift+S` salvar como ·
+`Ctrl+O` abrir · `Ctrl+S` salvar e compilar · `Ctrl+Shift+S` salvar como ·
 `Ctrl+B`/`F5` compilar · `Ctrl+F` buscar · `Ctrl+Alt+V` vim · `F9` sumário ·
 `Ctrl+Shift+V` preview · `Ctrl+±` zoom do PDF · `Ctrl+0` ajustar à largura ·
 `Ctrl+Shift+C` conferir

@@ -1,12 +1,23 @@
-"""Compilação assíncrona e leitura do log do LaTeX.
+r"""Compilação assíncrona e leitura do log do LaTeX.
 
-O processo roda por Gio.Subprocess para que a janela não congele durante os
-segundos do latexmk. O log é lido depois, porque a saída do TeX no terminal é
-pior que o arquivo .log -- ela quebra as mensagens em 79 colunas.
+Há dois modos, e a diferença entre eles é o que cada um escreve em disco.
+
+- **Compilação** (Ctrl+B, Ctrl+S) grava o seu .tex e compila ele mesmo, pelo
+  scripts/compilar.sh do projeto quando existe.
+- **Prévia** (a contínua, enquanto se digita) não encosta no seu arquivo:
+  despeja o buffer num arquivo sombra dentro do cache e compila de lá, com o
+  diretório de trabalho na pasta do texto. É esse detalhe que faz
+  ``\input{../../preambulo.tex}`` continuar resolvendo, já que o TeX resolve
+  caminho relativo contra o diretório de trabalho, não contra o arquivo.
+
+O processo roda por Gio.Subprocess para a janela não congelar durante os
+segundos do latexmk. O log é lido do arquivo, não da saída do terminal, porque
+no terminal o TeX quebra as mensagens em 79 colunas.
 """
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 from dataclasses import dataclass
@@ -94,32 +105,27 @@ def ler_log(caminho_do_log: Path) -> list[Diagnostico]:
 
 
 class Compilador(GObject.Object):
-    """Roda o latexmk e avisa quando termina.
-
-    Respeita o `scripts/compilar.sh` do projeto quando ele existe: é ele que
-    sabe nomear o PDF pela pasta do trabalho.
-    """
+    """Roda o latexmk e avisa quando termina."""
 
     __gsignals__ = {
-        "comecou": (GObject.SignalFlags.RUN_FIRST, None, ()),
-        # (deu certo, caminho do pdf ou "", lista de diagnósticos)
-        "terminou": (GObject.SignalFlags.RUN_FIRST, None, (bool, str, object)),
+        "comecou": (GObject.SignalFlags.RUN_FIRST, None, (bool,)),
+        # (deu certo, caminho do pdf ou "", diagnósticos, era prévia)
+        "terminou": (GObject.SignalFlags.RUN_FIRST, None, (bool, str, object, bool)),
     }
 
     def __init__(self) -> None:
         super().__init__()
         self._processo: Gio.Subprocess | None = None
-        self._pendente = False
+        self._pendente: tuple | None = None
 
     @property
     def ocupado(self) -> bool:
         return self._processo is not None
 
-    def compilar(self, arquivo_tex: Path) -> None:
-        if self._processo is not None:
-            self._pendente = True  # recompila assim que a atual terminar
-            return
+    # --------------------------------------------------------- os dois modos
 
+    def compilar(self, arquivo_tex: Path) -> None:
+        """Compila o arquivo do usuário, que já deve estar gravado."""
         pasta = arquivo_tex.parent
         script = self._script_do_projeto(pasta)
         if script is not None:
@@ -127,14 +133,55 @@ class Compilador(GObject.Object):
             diretorio = str(script.parent.parent)
         else:
             argumentos = [
-                "latexmk",
-                "-pdf",
-                "-interaction=nonstopmode",
-                "-halt-on-error",
-                "-synctex=1",
-                arquivo_tex.name,
+                "latexmk", "-pdf", "-interaction=nonstopmode",
+                "-halt-on-error", "-synctex=1", arquivo_tex.name,
             ]
             diretorio = str(pasta)
+        self._lancar(
+            argumentos,
+            diretorio,
+            self._pdf_de(arquivo_tex, pasta),
+            self._log_de(arquivo_tex, pasta),
+            previa=False,
+        )
+
+    def compilar_previa(self, texto: str, arquivo_tex: Path) -> None:
+        """Compila o buffer sem tocar no arquivo do usuário."""
+        sombra = self.pasta_da_sombra(arquivo_tex.parent)
+        try:
+            sombra.mkdir(parents=True, exist_ok=True)
+            (sombra / "previa.tex").write_text(texto, encoding="utf-8")
+        except OSError as erro:
+            self.emit("terminou", False, "", [Diagnostico("erro", str(erro))], True)
+            return
+
+        self._lancar(
+            [
+                "latexmk", "-pdf", "-interaction=nonstopmode", "-halt-on-error",
+                f"-output-directory={sombra}", str(sombra / "previa.tex"),
+            ],
+            # O diretório de trabalho é o da pasta do texto, não o da sombra:
+            # é o que mantém os caminhos relativos do documento resolvendo.
+            str(arquivo_tex.parent),
+            sombra / "previa.pdf",
+            sombra / "previa.log",
+            previa=True,
+        )
+
+    @staticmethod
+    def pasta_da_sombra(pasta_do_texto: Path) -> Path:
+        chave = hashlib.sha1(str(pasta_do_texto).encode()).hexdigest()[:12]
+        return Path(GLib.get_user_cache_dir()) / "serifa" / "previa" / chave
+
+    # ------------------------------------------------------------- execução
+
+    def _lancar(
+        self, argumentos: list[str], diretorio: str, pdf: Path, log: Path, previa: bool
+    ) -> None:
+        if self._processo is not None:
+            # Uma de cada vez; a última pedida vence.
+            self._pendente = (argumentos, diretorio, pdf, log, previa)
+            return
 
         lanc = Gio.SubprocessLauncher.new(
             Gio.SubprocessFlags.STDOUT_SILENCE | Gio.SubprocessFlags.STDERR_SILENCE
@@ -143,33 +190,30 @@ class Compilador(GObject.Object):
         try:
             self._processo = lanc.spawnv(argumentos)
         except GLib.Error as erro:
-            self.emit("terminou", False, "", [Diagnostico("erro", str(erro))])
+            self.emit("terminou", False, "", [Diagnostico("erro", str(erro))], previa)
             return
 
-        self.emit("comecou")
-        self._processo.wait_async(None, self._ao_terminar, (arquivo_tex, pasta))
+        self.emit("comecou", previa)
+        self._processo.wait_async(None, self._ao_terminar, (pdf, log, previa))
 
     def _ao_terminar(self, processo: Gio.Subprocess, resultado, dados) -> None:
-        arquivo_tex, pasta = dados
+        pdf, log, previa = dados
         try:
             processo.wait_finish(resultado)
-            deu_certo = processo.get_successful()
         except GLib.Error:
-            deu_certo = False
+            pass
         self._processo = None
 
-        diagnosticos = ler_log(self._log_de(arquivo_tex, pasta))
-        pdf = self._pdf_de(arquivo_tex, pasta)
+        diagnosticos = ler_log(log)
+        tem_pdf = pdf.exists()
         # O latexmk devolve código de erro mesmo quando o PDF saiu; quem manda
         # é o arquivo existir e não haver erro no log.
-        tem_pdf = pdf is not None and pdf.exists()
         sucesso = tem_pdf and not any(d.severidade == "erro" for d in diagnosticos)
+        self.emit("terminou", sucesso, str(pdf) if tem_pdf else "", diagnosticos, previa)
 
-        self.emit("terminou", sucesso, str(pdf) if tem_pdf else "", diagnosticos)
-
-        if self._pendente:
-            self._pendente = False
-            self.compilar(arquivo_tex)
+        if self._pendente is not None:
+            pendente, self._pendente = self._pendente, None
+            self._lancar(*pendente)
 
     # ------------------------------------------------------------- caminhos
 
@@ -183,7 +227,7 @@ class Compilador(GObject.Object):
         return None
 
     @staticmethod
-    def _pdf_de(arquivo_tex: Path, pasta: Path) -> Path | None:
+    def _pdf_de(arquivo_tex: Path, pasta: Path) -> Path:
         # O compilar.sh nomeia o PDF pela pasta; o latexmk cru, pelo .tex.
         pelo_nome_da_pasta = pasta / f"{pasta.name}.pdf"
         if pelo_nome_da_pasta.exists():
