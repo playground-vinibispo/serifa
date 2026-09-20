@@ -61,9 +61,31 @@ def montar_janela_completa(app):
     janela._botao_vim.set_active(True)
     editor.grab_focus()
     detector(editor, lambda t: print(t, flush=True))
+
+    # Registra toda tecla no ponto exato em que ela chega ao controlador do
+    # vim, antes do filtro. "consumida=True" quer dizer que alguém da Serifa
+    # ficou com ela e o vim nunca a viu.
+    controlador_vim = editor._controlador_vim
+
+    def espiar(_c, keyval, _code, estado):
+        nome = Gdk.keyval_name(keyval) or "?"
+        if nome.startswith(("Shift", "Control", "Alt", "Super", "Meta", "ISO")):
+            return False
+        print(
+            f"tecla {nome:<12} balão={'aberto' if janela._popup.visivel else 'fechado':<7} "
+            f"seleção={bool(editor.buffer.get_selection_bounds())} "
+            f"completacao_nativa={editor.get_completion().get_property('view') is not None}",
+            flush=True,
+        )
+        return False
+
+    controlador_vim.connect("key-pressed", espiar)
+
     print(f"variante=janela  vim={editor.vim_ativo}  "
           f"overwrite={editor.get_overwrite()}", flush=True)
-    print("digite j k x no editor. Nenhum VAZOU deveria aparecer.", flush=True)
+    print("Ponha o cursor dentro de {...} e tente: viw, depois ci{, depois vi{",
+          flush=True)
+    print("Cada tecla que o vim recebe aparece abaixo.", flush=True)
 
 
 def montar(app):

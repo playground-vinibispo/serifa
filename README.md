@@ -27,7 +27,8 @@ caminho é gtk-rs: mesmos widgets, mesma aparência, sem trocar de arquitetura.
 
 | | |
 |---|---|
-| **Modo vim** | Botão `VIM` na barra de título, ou `Ctrl+Alt+V`. A barra de comandos (`:w`, `/busca`) aparece na barra de estado. O estado fica guardado entre sessões. |
+| **Modo vim** | Botão `VIM` na barra de título, ou `Ctrl+Alt+V`. A barra de estado mostra o que o vim reporta (`-- INSERT --`, `:w`, `/busca`, e o comando em digitação). O estado fica guardado entre sessões. Com o vim ligado, `Ctrl+B` e `Ctrl+I` são devolvidos a ele. |
+| **Text objects no visual** | `vi{`, `va(`, `vi"` e afins, que o GtkSourceView não implementa — ver as armadilhas abaixo. Entende aninhamento e ignora chave escapada (`\{`), que em LaTeX é chave literal. |
 | **Preview** | Rolagem contínua, só rasteriza o que está à vista. `Ctrl+scroll` dá zoom, `Ctrl+0` ajusta à largura. Recompilar **não** joga a rolagem pro topo. |
 | **Prévia contínua** | 1,4 s depois de você parar de digitar, **sem tocar no seu arquivo**: o buffer vai para um arquivo sombra no cache e é compilado de lá, com o diretório de trabalho na pasta do texto — é esse detalhe que mantém `\input{../../preambulo.tex}` resolvendo, já que o TeX resolve caminho relativo contra o diretório de trabalho e não contra o arquivo. |
 | **Compilação** | `Ctrl+B` ou `F5`: grava o seu `.tex` e compila ele mesmo, pelo `scripts/compilar.sh` do projeto quando existe — é ele que sabe nomear o PDF pela pasta. |
@@ -62,7 +63,7 @@ sudo dnf install hunspell-pt
 
 Na próxima abertura o `Spelling` acha `pt_BR` sozinho.
 
-## Duas armadilhas encontradas no caminho
+## Três armadilhas encontradas no caminho
 
 Ficam registradas porque as duas custam horas e nenhuma aparece na documentação.
 
@@ -101,11 +102,23 @@ Errar qualquer um desses dá um `WARNING` no console e zero snippets carregados,
 sem mais explicação. Por isso o `.snippets` é gerado em tempo de execução a
 partir das listas em `serifa/complete.py`: uma fonte de verdade só.
 
+**3. O modo visual do GtkSourceView não tem text objects.** Os símbolos da
+biblioteca dizem isso sem rodeios: existem `gtk_source_vim_command_set_text_object`
+e `gtk_source_vim_insert_set_text_object`, mas o estado visual só expõe `clone`,
+`get_bounds`, `ignore_command`, `new` e `warp`. Por isso `ci{` funciona e `vi{`
+não — ali o `i` é ignorado e o `{` vira o movimento "parágrafo anterior", que
+apenas pula o cursor.
+
+`serifa/blocos.py` implementa a delimitação, e `Editor._ao_teclar_no_vim`
+reconhece a sequência `v` → `i`/`a` → sinal. O `v` segue para o vim, que entra
+em modo visual de verdade; o `i` e o sinal são consumidos antes do filtro.
+
 ## Estrutura
 
 ```
 serifa/
 ├── editor.py     GtkSource.View, vim, pares automáticos, ortografia
+├── blocos.py     delimitação de blocos: o `i{` e `a(` que faltam no visual
 ├── preview.py    Poppler + cairo, rolagem contínua
 ├── build.py      latexmk assíncrono e leitura do .log
 ├── complete.py   geração dos snippets

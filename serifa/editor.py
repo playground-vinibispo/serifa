@@ -19,8 +19,11 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("GtkSource", "5")
+gi.require_version("Gdk", "4.0")
 
-from gi.repository import GObject, Gtk, GtkSource
+from gi.repository import Gdk, GObject, Gtk, GtkSource
+
+from .blocos import alvo
 
 try:
     gi.require_version("Spelling", "1")
@@ -78,6 +81,9 @@ class Editor(GtkSource.View):
         self._vim: GtkSource.VimIMContext | None = None
         self._controlador_vim: Gtk.EventControllerKey | None = None
         self._vinculo_foco = 0
+        self._vinculo_teclas = 0
+        self._sequencia: list[str] = []   # teclas desde o último "v"
+        self._tamanho_no_v = 0
         self._pares_automaticos = True
         self._inserindo = False  # trava de reentrância do insert-text
 
@@ -124,10 +130,19 @@ class Editor(GtkSource.View):
             self._vinculo_foco = self.connect(
                 "notify::has-focus", self._ao_mudar_foco
             )
+            # Conectado ao sinal, este handler roda ANTES do tratador padrão
+            # do controlador, que é quem chama o filtro do vim.
+            self._vinculo_teclas = controlador.connect(
+                "key-pressed", self._ao_teclar_no_vim
+            )
         elif not ativo and self._vim is not None:
             self._vim.focus_out()
             self.disconnect(self._vinculo_foco)
             self._vinculo_foco = 0
+            if self._vinculo_teclas:
+                self._controlador_vim.disconnect(self._vinculo_teclas)
+                self._vinculo_teclas = 0
+            self._sequencia.clear()
             self.remove_controller(self._controlador_vim)
             self._vim = None
             self._controlador_vim = None
@@ -141,6 +156,68 @@ class Editor(GtkSource.View):
             self._vim.focus_in()
         else:
             self._vim.focus_out()
+
+    # ------------------------------------------- text objects no modo visual
+
+    def _ao_teclar_no_vim(self, _controlador, keyval, _codigo, estado) -> bool:
+        """Faz `vi{`, `va(`, `i"` e afins funcionarem no modo visual.
+
+        O modo visual do GtkSourceView não tem text objects: a biblioteca traz
+        gtk_source_vim_command_set_text_object e a versão para insert, mas o
+        estado visual só expõe clone, get_bounds, ignore_command, new e warp.
+        Daí `ci{` funcionar e `vi{` não -- ali o `i` é ignorado e o `{` vira o
+        movimento "parágrafo anterior", que só pula o cursor.
+
+        Aqui a sequência v -> i|a -> sinal é reconhecida e a seleção é feita à
+        mão. O `v` segue para o vim, que entra em modo visual de verdade; o
+        `i` e o sinal são consumidos, senão o vim os interpretaria como
+        movimento.
+        """
+        if estado & (Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.ALT_MASK):
+            self._sequencia.clear()
+            return False
+
+        codigo = Gdk.keyval_to_unicode(keyval)
+        tecla = chr(codigo) if codigo else ""
+        if not tecla:
+            self._sequencia.clear()
+            return False
+
+        if not self._sequencia:
+            if tecla == "v" and not self.buffer.get_selection_bounds():
+                self._sequencia.append("v")
+                self._tamanho_no_v = self.buffer.get_char_count()
+            return False
+
+        # Se o texto mudou desde o "v", estávamos em modo de inserção e aquele
+        # "v" era só a letra v. Nada a fazer aqui.
+        if self.buffer.get_char_count() != self._tamanho_no_v:
+            self._sequencia.clear()
+            return False
+
+        if len(self._sequencia) == 1:
+            if tecla in ("i", "a"):
+                self._sequencia.append(tecla)
+                return True   # o vim não tem o que fazer com isto no visual
+            self._sequencia.clear()
+            return False
+
+        por_dentro = self._sequencia[1] == "i"
+        self._sequencia.clear()
+        return self._selecionar_bloco(tecla, por_dentro)
+
+    def _selecionar_bloco(self, sinal: str, por_dentro: bool) -> bool:
+        cursor = self.buffer.get_iter_at_mark(self.buffer.get_insert())
+        faixa = alvo(self.texto, cursor.get_offset(), sinal, por_dentro)
+        if faixa is None:
+            return False
+        inicio, fim = faixa
+        # Cursor no fim e âncora no começo, como o vim deixa.
+        self.buffer.select_range(
+            self.buffer.get_iter_at_offset(fim),
+            self.buffer.get_iter_at_offset(inicio),
+        )
+        return True
 
     # ------------------------------------------------------- pares e ambientes
 
