@@ -1,0 +1,8 @@
+#!/usr/bin/bash
+# O gi (PyGObject) está no Python do sistema, não no Python do mise.
+exec /usr/bin/python3.12 -c "
+import sys
+sys.path.insert(0, '$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)')
+from serifa.main import main
+sys.exit(main())
+" "$@"
