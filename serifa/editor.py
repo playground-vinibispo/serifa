@@ -77,6 +77,7 @@ class Editor(GtkSource.View):
 
         self._vim: GtkSource.VimIMContext | None = None
         self._controlador_vim: Gtk.EventControllerKey | None = None
+        self._vinculo_foco = 0
         self._pares_automaticos = True
         self._inserindo = False  # trava de reentrância do insert-text
 
@@ -106,13 +107,40 @@ class Editor(GtkSource.View):
             controlador.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
             self.add_controller(controlador)
             vim.set_client_widget(self)
+
+            # O GtkEventControllerKey só avisa focus_in ao contexto de entrada
+            # quando o widget GANHA foco depois de o controlador existir. Ligar
+            # o vim por Ctrl+Alt+V não troca o foco de lugar -- o editor já
+            # estava focado --, então sem este empurrão o contexto nunca é
+            # ativado e não filtra tecla nenhuma. E como o vim já pôs o
+            # TextView em overwrite para desenhar o cursor em bloco do modo
+            # normal, cada tecla que vaza não insere: sobrescreve. É o "modo
+            # replace" que aparece do nada.
+            if self.has_focus():
+                vim.focus_in()
+
             self._vim = vim
             self._controlador_vim = controlador
+            self._vinculo_foco = self.connect(
+                "notify::has-focus", self._ao_mudar_foco
+            )
         elif not ativo and self._vim is not None:
+            self._vim.focus_out()
+            self.disconnect(self._vinculo_foco)
+            self._vinculo_foco = 0
             self.remove_controller(self._controlador_vim)
             self._vim = None
             self._controlador_vim = None
         return self._vim
+
+    def _ao_mudar_foco(self, *_args) -> None:
+        """Mantém o contexto do vim em dia com o foco, nos dois sentidos."""
+        if self._vim is None:
+            return
+        if self.has_focus():
+            self._vim.focus_in()
+        else:
+            self._vim.focus_out()
 
     # ------------------------------------------------------- pares e ambientes
 
