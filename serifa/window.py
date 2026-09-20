@@ -48,6 +48,7 @@ class Janela(Adw.ApplicationWindow):
         self._temporizador_sumario = 0
         self._compilacao_continua = True
         self._diagnosticos: list[Diagnostico] = []
+        self._vigia: Gio.FileMonitor | None = None
 
         self._compilador = Compilador()
         self._compilador.connect("comecou", self._ao_comecar_compilacao)
@@ -284,8 +285,14 @@ class Janela(Adw.ApplicationWindow):
             barra_estado.append(rotulo)
         barra_estado.append(self._estado_compilacao)
 
+        self._aviso = Adw.Banner()
+        self._aviso.set_button_label("Recarregar")
+        self._aviso.connect("button-clicked", lambda *_: self._recarregar())
+        self._aviso.set_revealed(False)
+
         vista = Adw.ToolbarView()
         vista.add_top_bar(cabecalho)
+        vista.add_top_bar(self._aviso)
         vista.set_content(self._divisor)
         vista.add_bottom_bar(barra_estado)
 
@@ -368,6 +375,7 @@ class Janela(Adw.ApplicationWindow):
         self._arquivo = caminho
         self._sujo = False
         self._popup.reiniciar()
+        self._vigiar(caminho)
         self._chaves.definir_pasta(caminho.parent)
         self._acervo.definir_pasta(caminho.parent)
         self._chaves.atualizar(texto)
@@ -409,6 +417,72 @@ class Janela(Adw.ApplicationWindow):
             self._chaves.definir_pasta(self._arquivo.parent)
             self._acervo.definir_pasta(self._arquivo.parent)
             self.salvar()
+
+    # ------------------------------------------------- arquivo mexido fora
+
+    def _vigiar(self, caminho: Path) -> None:
+        """Observa o arquivo aberto, para o editor não competir com o disco."""
+        if self._vigia is not None:
+            self._vigia.cancel()
+        self._vigia = Gio.File.new_for_path(str(caminho)).monitor_file(
+            Gio.FileMonitorFlags.NONE, None
+        )
+        self._vigia.connect("changed", self._ao_mudar_no_disco)
+
+    def _ao_mudar_no_disco(self, _monitor, _arquivo, _outro, evento) -> None:
+        if evento not in (
+            Gio.FileMonitorEvent.CHANGES_DONE_HINT,
+            Gio.FileMonitorEvent.CREATED,
+        ):
+            return
+        if self._arquivo is None:
+            return
+        try:
+            em_disco = self._arquivo.read_text(encoding="utf-8")
+        except OSError:
+            return
+
+        # Nossa própria gravação dispara o vigia: se o disco já é o que está
+        # na tela, não há nada a fazer.
+        if em_disco == self._editor.texto:
+            self._aviso.set_revealed(False)
+            return
+
+        if self._sujo:
+            # Com alteração não gravada, recarregar sozinho apagaria o
+            # trabalho de alguém -- quem decide é o usuário.
+            self._aviso.set_title(
+                f"{self._arquivo.name} mudou no disco, e há alterações não salvas aqui"
+            )
+            self._aviso.set_revealed(True)
+        else:
+            self._recarregar()
+            self._avisar(f"{self._arquivo.name} recarregado do disco")
+
+    def _recarregar(self) -> None:
+        """Relê o arquivo preservando onde o cursor estava."""
+        if self._arquivo is None:
+            return
+        try:
+            texto = self._arquivo.read_text(encoding="utf-8")
+        except OSError as erro:
+            self._avisar(f"Não deu para recarregar: {erro}")
+            return
+
+        buffer = self._editor.buffer
+        onde = buffer.get_iter_at_mark(buffer.get_insert()).get_offset()
+        buffer.begin_irreversible_action()
+        buffer.set_text(texto)
+        buffer.end_irreversible_action()
+        buffer.set_modified(False)
+        self._sujo = False
+        self._aviso.set_revealed(False)
+        buffer.place_cursor(
+            buffer.get_iter_at_offset(min(onde, buffer.get_char_count()))
+        )
+        self._editor.scroll_to_mark(buffer.get_insert(), 0.25, True, 0.0, 0.35)
+        self._atualizar_titulo()
+        self._reconstruir_sumario()
 
     # ----------------------------------------------------- compilação
 

@@ -41,6 +41,7 @@ caminho é gtk-rs: mesmos widgets, mesma aparência, sem trocar de arquitetura.
 | **Contagem** | Palavras de prosa na barra de estado — comandos, matemática e comentários fora da conta. |
 | **Conferidor** | `Ctrl+Shift+C` roda o `scripts/conferir-texto.py` do projeto e mostra o resultado no painel de erros. |
 | **Busca** | `Ctrl+F`, com volta ao início. |
+| **Arquivo mexido fora** | O arquivo aberto é vigiado. Sem alterações pendentes aqui, o editor recarrega sozinho preservando a posição do cursor. Havendo, aparece um aviso com botão **Recarregar** — nada é sobrescrito sem você mandar. |
 | **Sessão** | Último arquivo, modo vim, compilação contínua e posição do divisor voltam ao abrir. |
 
 ## Atalhos
