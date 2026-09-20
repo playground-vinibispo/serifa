@@ -229,6 +229,7 @@ class Popup:
         self._contexto = Contexto("", "", 0)
         self._temporizador = 0
         self._suprimir = False
+        self._silenciado = False
 
         self._lista = Gtk.ListBox()
         self._lista.set_activate_on_single_click(True)
@@ -299,17 +300,27 @@ class Popup:
         return GLib.SOURCE_REMOVE
 
     def fechar(self) -> None:
-        if self._balao.get_visible():
-            self._balao.popdown()
-            self._silenciar_vim(False)
+        self._balao.popdown()
+        self._silenciar_vim(False)
 
     def _silenciar_vim(self, silenciar: bool) -> None:
+        """Liga e desliga a escuta do vim, sem consultar o balão.
+
+        Antes isto dependia de `self._balao.get_visible()`, e bastava a
+        visibilidade discordar do estado real uma vez para o vim ficar em
+        PropagationPhase.NONE para sempre -- surdo, com o modo normal
+        deixando de bloquear a digitação. O estado agora é explícito.
+        """
+        if silenciar == self._silenciado:
+            return
         controlador = getattr(self._editor, "_controlador_vim", None)
         if controlador is None:
+            self._silenciado = False
             return
         controlador.set_propagation_phase(
             Gtk.PropagationPhase.NONE if silenciar else Gtk.PropagationPhase.CAPTURE
         )
+        self._silenciado = silenciar
 
     # ---------------------------------------------------------------- UI
 

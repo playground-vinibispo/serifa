@@ -166,8 +166,13 @@ class Janela(Adw.ApplicationWindow):
         botao_abrir.connect("clicked", lambda *_: self.abrir_dialogo())
         cabecalho.pack_start(botao_abrir)
 
-        self._botao_salvar = Gtk.Button(icon_name="document-save-symbolic")
-        self._botao_salvar.set_tooltip_text("Salvar (Ctrl+S)")
+        # Texto em vez de ícone: o document-save-symbolic do Adwaita atual é
+        # uma seta caindo numa bandeja, indistinguível de "baixar". E o botão
+        # só fica ativo havendo o que gravar, o que responde de relance a
+        # pergunta "já salvei?".
+        self._botao_salvar = Gtk.Button(label="Salvar")
+        self._botao_salvar.set_tooltip_text("Salvar e compilar (Ctrl+S)")
+        self._botao_salvar.set_sensitive(False)
         self._botao_salvar.connect("clicked", lambda *_: self.salvar())
         cabecalho.pack_start(self._botao_salvar)
 
@@ -226,8 +231,11 @@ class Janela(Adw.ApplicationWindow):
         self._estado_palavras = Gtk.Label(label="0 palavras")
         self._estado_vim = Gtk.Label()
         self._estado_vim.add_css_class("monospace")
-        self._estado_vim.set_hexpand(True)
         self._estado_vim.set_xalign(0.0)
+        self._estado_comando = Gtk.Label()
+        self._estado_comando.add_css_class("monospace")
+        self._estado_comando.set_hexpand(True)
+        self._estado_comando.set_xalign(0.0)
         self._estado_compilacao = Gtk.Label(label="pronto")
         self._estado_compilacao.add_css_class("dim-label")
 
@@ -236,7 +244,8 @@ class Janela(Adw.ApplicationWindow):
         barra_estado.set_margin_end(12)
         barra_estado.set_margin_top(4)
         barra_estado.set_margin_bottom(4)
-        for rotulo in (self._estado_posicao, self._estado_palavras, self._estado_vim):
+        for rotulo in (self._estado_posicao, self._estado_palavras,
+                       self._estado_vim, self._estado_comando):
             rotulo.add_css_class("dim-label")
             barra_estado.append(rotulo)
         barra_estado.append(self._estado_compilacao)
@@ -327,6 +336,9 @@ class Janela(Adw.ApplicationWindow):
         pdf = Compilador._pdf_de(caminho, caminho.parent)
         if pdf.exists():
             self._preview.carregar(pdf)
+        # O Gtk.FileDialog é modal e leva o foco embora; sem devolvê-lo aqui,
+        # as teclas seguintes podem não chegar ao contexto do vim.
+        self._editor.grab_focus()
         self._guardar_estado()
 
     def salvar(self) -> bool:
@@ -559,6 +571,7 @@ class Janela(Adw.ApplicationWindow):
         self._estado_palavras.set_label(f"{total} palavras")
 
     def _atualizar_titulo(self) -> None:
+        self._botao_salvar.set_sensitive(self._sujo and self._arquivo is not None)
         if self._arquivo is None:
             self._titulo.set_title("Serifa")
             self._titulo.set_subtitle("nenhum arquivo")
@@ -572,12 +585,19 @@ class Janela(Adw.ApplicationWindow):
     def _ao_alternar_vim(self, botao: Gtk.ToggleButton) -> None:
         vim = self._editor.alternar_vim(botao.get_active())
         if vim is not None:
-            # A barra de comandos do vim (:w, /busca) aparece na barra de estado.
+            # O VimIMContext não expõe o modo atual em lugar nenhum: só tem
+            # command-bar-text (que traz "-- INSERT --", ":w", "/busca") e
+            # command-text (o comando em digitação, como "2d"). Mostrar os dois
+            # crus é o mais perto de um indicador de modo que dá para ter --
+            # e é melhor que o "-- modo vim --" fixo que estava aqui, que não
+            # dizia se você estava em normal ou em insert.
             vim.bind_property("command-bar-text", self._estado_vim, "label")
-            self._estado_vim.set_label("-- modo vim --")
+            vim.bind_property("command-text", self._estado_comando, "label")
+            self._estado_vim.set_label("")
             botao.add_css_class("accent")
         else:
             self._estado_vim.set_label("")
+            self._estado_comando.set_label("")
             botao.remove_css_class("accent")
         self._editor.grab_focus()
         self._guardar_estado()
