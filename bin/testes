@@ -1,10 +1,23 @@
 #!/usr/bin/bash
-# Suíte da Serifa. Roda com o Python do sistema, que é onde o gi vive.
-#   bin/testes            tudo
-#   bin/testes -v         verboso
-#   bin/testes testes.test_blocos    um módulo só
+# Suíte da Serifa.
+#   bin/testes                       tudo
+#   bin/testes -v                    verboso
+#   bin/testes testes.test_blocos    um módulo
+#   bin/testes --cobertura           com relatório de cobertura
 cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
-if [ $# -gt 0 ] && [[ "$1" != -* ]]; then
-    exec /usr/bin/python3.12 -m unittest "$@"
+
+# O venv do uv, quando existe; senão o Python do sistema, que é onde o gi vive.
+PY=".venv/bin/python"
+[ -x "$PY" ] || PY="/usr/bin/python3.12"
+
+if [ "$1" = "--cobertura" ]; then
+    shift
+    "$PY" -m coverage run -m unittest discover -s testes -t . "$@" || exit 1
+    "$PY" -m coverage report -m
+    exit 0
 fi
-exec /usr/bin/python3.12 -m unittest discover -s testes -t . "$@"
+
+if [ $# -gt 0 ] && [[ "$1" != -* ]]; then
+    exec "$PY" -m unittest "$@"
+fi
+exec "$PY" -m unittest discover -s testes -t . "$@"

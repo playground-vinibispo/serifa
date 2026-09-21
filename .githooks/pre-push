@@ -1,0 +1,5 @@
+#!/usr/bin/bash
+# Roda o mesmo que a CI antes de publicar. Instale com bin/instalar-hooks.
+cd "$(git rev-parse --show-toplevel)" || exit 1
+./bin/conferir || { echo "ruff reprovou; push cancelado"; exit 1; }
+./bin/testes   || { echo "suíte reprovou; push cancelado"; exit 1; }

@@ -1,0 +1,13 @@
+#!/usr/bin/bash
+# Prepara o ambiente de desenvolvimento.
+#
+# O --system-site-packages não é opcional: o PyGObject vem do sistema, e um
+# venv isolado não enxergaria gi, GtkSourceView nem Poppler. O --python
+# aponta para o Python do sistema pelo mesmo motivo -- é nele que os bindings
+# estão instalados.
+set -e
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+uv venv --clear --python /usr/bin/python3.12 --system-site-packages .venv
+uv pip install --python .venv/bin/python --group dev
+echo
+echo "pronto. bin/testes e bin/conferir já usam o .venv."

@@ -44,7 +44,8 @@ class TestLerLog(unittest.TestCase):
 
     def test_rerun_e_ruido_e_some(self):
         # O latexmk resolve sozinho; mostrar isso só polui o painel.
-        self.assertEqual(self.log("LaTeX Warning: Label(s) may have changed. Rerun.\n"), [])
+        self.assertEqual(
+            self.log("LaTeX Warning: Label(s) may have changed. Rerun.\n"), [])
 
     def test_resumo_traz_arquivo_e_linha(self):
         d = Diagnostico("erro", "algo", "sub/texto.tex", 9)
@@ -72,7 +73,8 @@ class TestCaminhos(unittest.TestCase):
         # É como o scripts/compilar.sh do projeto nomeia, para o anexo já sair
         # identificado.
         (self.pasta / "questionario-02.pdf").write_bytes(b"%PDF")
-        self.assertEqual(Compilador._pdf_de(self.tex, self.pasta).name, "questionario-02.pdf")
+        self.assertEqual(Compilador._pdf_de(self.tex, self.pasta).name,
+                         "questionario-02.pdf")
 
     def test_sombra_e_estavel_e_fora_do_projeto(self):
         a = Compilador.pasta_da_sombra(self.pasta)

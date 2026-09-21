@@ -4,28 +4,49 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from serifa.contexto import Acervo, Contexto, detectar, _subsequencia
+from serifa.contexto import Acervo, Contexto, _subsequencia, detectar
 
 
 class TestDetectar(unittest.TestCase):
     def conferir(self, esquerda, tipo, prefixo):
         contexto = detectar(esquerda, len(esquerda))
-        self.assertEqual((contexto.tipo, contexto.prefixo), (tipo, prefixo), repr(esquerda))
+        self.assertEqual((contexto.tipo, contexto.prefixo), (tipo, prefixo),
+                         repr(esquerda))
 
-    def test_citacao_vazia(self):        self.conferir(r"veja \cite{", "citacao", "")
-    def test_citacao_com_prefixo(self):  self.conferir(r"veja \cite{eins", "citacao", "eins")
-    def test_citacao_com_opcional(self): self.conferir(r"\citep[p.~64]{ei", "citacao", "ei")
+    def test_citacao_vazia(self):
+        self.conferir(r"veja \cite{", "citacao", "")
+
+    def test_citacao_com_prefixo(self):
+        self.conferir(r"veja \cite{eins", "citacao", "eins")
+
+    def test_citacao_com_opcional(self):
+        self.conferir(r"\citep[p.~64]{ei", "citacao", "ei")
     def test_citacao_multipla(self):
         # Só o trecho depois da última vírgula conta como prefixo.
         self.conferir(r"\cite{pires, eins", "citacao", "eins")
-    def test_referencia(self):     self.conferir(r"na \ref{sec:", "referencia", "sec:")
-    def test_eqref(self):          self.conferir(r"\eqref{eq1", "referencia", "eq1")
-    def test_ambiente_begin(self): self.conferir(r"\begin{item", "ambiente", "item")
-    def test_ambiente_end(self):   self.conferir(r"\end{", "ambiente", "")
-    def test_grafico(self):        self.conferir(r"\includegraphics[width=2cm]{fig", "grafico", "fig")
-    def test_entrada(self):        self.conferir(r"\input{../../pre", "entrada", "../../pre")
-    def test_bibliography_e_entrada(self): self.conferir(r"\bibliography{../../ref", "entrada", "../../ref")
-    def test_prosa_nao_e_contexto(self):   self.conferir(r"texto normal ", "", "")
+    def test_referencia(self):
+        self.conferir(r"na \ref{sec:", "referencia", "sec:")
+
+    def test_eqref(self):
+        self.conferir(r"\eqref{eq1", "referencia", "eq1")
+
+    def test_ambiente_begin(self):
+        self.conferir(r"\begin{item", "ambiente", "item")
+
+    def test_ambiente_end(self):
+        self.conferir(r"\end{", "ambiente", "")
+
+    def test_grafico(self):
+        self.conferir(r"\includegraphics[width=2cm]{fig", "grafico", "fig")
+
+    def test_entrada(self):
+        self.conferir(r"\input{../../pre", "entrada", "../../pre")
+
+    def test_bibliography_e_entrada(self):
+        self.conferir(r"\bibliography{../../ref", "entrada", "../../ref")
+
+    def test_prosa_nao_e_contexto(self):
+        self.conferir(r"texto normal ", "", "")
     def test_section_nao_e_contexto(self):
         # \section{ tem chaves mas não é lugar de completar nada.
         self.conferir(r"\section{Um titulo", "", "")

@@ -1,0 +1,41 @@
+[project]
+name = "serifa"
+version = "0.1.0"
+description = "Editor de LaTeX de mesa: preview do PDF, completação por contexto e modo vim"
+requires-python = ">=3.12"
+# Sem dependências: a aplicação usa PyGObject, GtkSourceView, libadwaita e
+# Poppler do sistema. Instalar PyGObject por pip aqui só criaria uma segunda
+# cópia que não enxerga as bibliotecas GObject instaladas.
+dependencies = []
+
+[dependency-groups]
+dev = ["ruff>=0.14", "coverage>=7.6"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 90
+exclude = [".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = [
+    # PyGObject exige gi.require_version() ANTES do from gi.repository import.
+    # Não é import fora de lugar: é a ordem que o binding impõe, e inverter
+    # carrega a versão errada da biblioteca.
+    "E402",
+    # Nomes em português. A regra de ambiguidade reclama de "l" isolado, que
+    # não usamos, mas também de acentuação em alguns contextos.
+    "E741",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Os testes montam cenários; asserção em laço e nome longo são o normal ali.
+"testes/*" = ["B011"]
+
+[tool.coverage.run]
+source = ["serifa"]
+omit = ["*/data/*"]
+
+[tool.coverage.report]
+skip_empty = true
+exclude_lines = ["pragma: no cover", "raise NotImplementedError"]

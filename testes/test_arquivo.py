@@ -5,6 +5,7 @@ arquivo do usuário.** Até pouco tempo escrevia, como efeito colateral da
 compilação contínua.
 """
 
+import shutil
 import unittest
 
 from serifa.build import Compilador
@@ -41,6 +42,7 @@ class TestGravacao(CasoGrafico):
         bombear(400)
         self.assertEqual(self.alvo.read_text(encoding="utf-8"), self.original)
 
+    @unittest.skipUnless(shutil.which("latexmk"), "latexmk não instalado")
     def test_previa_compila_na_sombra_fora_do_projeto(self):
         sombra = Compilador.pasta_da_sombra(self.alvo.parent)
         self.assertNotIn(str(self.caixa), str(sombra))

@@ -45,7 +45,9 @@ ENTRADA = re.compile(r"\\(?:input|include|bibliography)(?:\[[^\]]*\])?\{([^}]*)$
 GRAFICO = re.compile(r"\\includegraphics(?:\[[^\]]*\])?\{([^}]*)$")
 
 CHAVE_BIB = re.compile(r"@\w+\s*\{\s*([^,\s]+)", re.MULTILINE)
-CAMPO_BIB = re.compile(r"(title|author)\s*=\s*[{\"](.+?)[}\"]\s*,", re.IGNORECASE | re.DOTALL)
+CAMPO_BIB = re.compile(
+    r"(title|author)\s*=\s*[{\"](.+?)[}\"]\s*,", re.IGNORECASE | re.DOTALL
+)
 ROTULO = re.compile(r"\\label\{([^}]+)\}")
 
 AMBIENTES = [
@@ -233,7 +235,9 @@ class Popup:
 
         self._lista = Gtk.ListBox()
         self._lista.set_activate_on_single_click(True)
-        self._lista.connect("row-activated", lambda _l, linha: self._aceitar(linha.get_index()))
+        self._lista.connect(
+            "row-activated", lambda _l, linha: self._aceitar(linha.get_index())
+        )
 
         rolagem = Gtk.ScrolledWindow()
         rolagem.set_child(self._lista)
@@ -343,8 +347,10 @@ class Popup:
 
         for item in self._itens[:40]:
             caixa = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-            caixa.set_margin_start(8); caixa.set_margin_end(8)
-            caixa.set_margin_top(3); caixa.set_margin_bottom(3)
+            caixa.set_margin_start(8)
+            caixa.set_margin_end(8)
+            caixa.set_margin_top(3)
+            caixa.set_margin_bottom(3)
             if item.icone:
                 caixa.append(Gtk.Image.new_from_icon_name(item.icone))
             nome = Gtk.Label(label=item.texto)

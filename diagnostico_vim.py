@@ -53,8 +53,8 @@ def montar_janela_completa(app):
     """Variante 'janela': a Serifa de verdade, com o detector grudado."""
     import pathlib
     sys.path.insert(0, str(pathlib.Path(__file__).parent))
+
     from serifa.window import Janela
-    from gi.repository import Adw
 
     janela = Janela(application=app)
     janela.present()
@@ -73,9 +73,11 @@ def montar_janela_completa(app):
         if nome.startswith(("Shift", "Control", "Alt", "Super", "Meta", "ISO")):
             return False
         print(
-            f"tecla {nome:<12} balão={'aberto' if janela._popup.visivel else 'fechado':<7} "
+            f"tecla {nome:<12} "
+            f"balão={'aberto' if janela._popup.visivel else 'fechado':<7} "
             f"seleção={bool(editor.buffer.get_selection_bounds())} "
-            f"completacao_nativa={editor.get_completion().get_property('view') is not None}",
+            f"completacao_nativa="
+            f"{editor.get_completion().get_property('view') is not None}",
             flush=True,
         )
         return False
@@ -133,8 +135,10 @@ def montar(app):
     detector(vista, relato.set_label)
 
     caixa = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-    caixa.set_margin_start(12); caixa.set_margin_end(12)
-    caixa.set_margin_top(12); caixa.set_margin_bottom(12)
+    caixa.set_margin_start(12)
+    caixa.set_margin_end(12)
+    caixa.set_margin_top(12)
+    caixa.set_margin_bottom(12)
     titulo = Gtk.Label()
     titulo.set_markup(
         f"<b>variante: {VARIANTE}</b>  —  se o vim funciona, "
@@ -150,7 +154,8 @@ def montar(app):
     janela.set_child(caixa)
     janela.present()
     vista.grab_focus()
-    print(f"variante={VARIANTE}  overwrite após ligar o vim={vista.get_overwrite()}", flush=True)
+    print(f"variante={VARIANTE}  "
+          f"overwrite após ligar o vim={vista.get_overwrite()}", flush=True)
 
 
 app = Gtk.Application(application_id=f"br.ufmg.vinibispo.DiagVim.{VARIANTE}")
