@@ -33,6 +33,10 @@ except (ValueError, ImportError):  # pragma: no cover - depende do sistema
     Spelling = None
 
 FECHAMENTO = {"{": "}", "[": "]", "(": ")", "$": "$"}
+# Digitar o fechamento que já está sob o cursor deve passar por cima dele, não
+# inserir um segundo. Sem isto, quem digita "\begin{align}" inteiro -- o que é
+# o natural -- termina com "}}".
+PASSAVEIS = {"}", "]", ")", "$"}
 
 # Teclas que não são "uma tecla" para efeito de sequência: chegam sozinhas no
 # meio de qualquer combinação. O caso que interessa é o Shift, sem o qual não
@@ -102,6 +106,7 @@ class Editor(GtkSource.View):
         # iterador aponta logo após ele, o que dispensa adiar com idle_add.
         # Adiar era o bug: se o buffer fosse trocado nesse meio-tempo, a
         # marca guardada apontava para outro documento.
+        self.buffer.connect("insert-text", self._antes_de_inserir)
         self.buffer.connect_after("insert-text", self._depois_de_inserir)
         self.buffer.connect("notify::cursor-position", self._ao_mover_cursor)
 
@@ -284,6 +289,21 @@ class Editor(GtkSource.View):
         return GLib.SOURCE_REMOVE
 
     # ------------------------------------------------------- pares e ambientes
+
+    def _antes_de_inserir(
+        self, buffer: GtkSource.Buffer, posicao: Gtk.TextIter, texto: str, tamanho: int
+    ) -> None:
+        """Passa por cima do fechamento em vez de duplicá-lo."""
+        if self._inserindo or not self._pares_automaticos:
+            return
+        if texto not in PASSAVEIS or posicao.is_end():
+            return
+        if posicao.get_char() != texto:
+            return
+        buffer.stop_emission_by_name("insert-text")
+        seguinte = posicao.copy()
+        seguinte.forward_char()
+        buffer.place_cursor(seguinte)
 
     def _depois_de_inserir(
         self, buffer: GtkSource.Buffer, posicao: Gtk.TextIter, texto: str, tamanho: int

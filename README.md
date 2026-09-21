@@ -114,6 +114,38 @@ apenas pula o cursor.
 reconhece a sequência `v` → `i`/`a` → sinal. O `v` segue para o vim, que entra
 em modo visual de verdade; o `i` e o sinal são consumidos antes do filtro.
 
+## Testes
+
+```sh
+bin/testes                    # tudo
+bin/testes -v                 # verboso
+bin/testes testes.test_blocos # um módulo
+```
+
+107 testes, uns 24 segundos. Sem dependência: `unittest` da biblioteca padrão,
+rodando no Python do sistema, que é onde o `gi` vive.
+
+O que os torna rápidos é não precisarem de `app.run()`: basta registrar a
+aplicação, montar a janela, chamar `present()` e bombear o laço principal à
+mão (`testes/apoio.py`). Nada toca em arquivo seu — cada caso ganha uma pasta
+temporária, e o estado de sessão é desviado para lá.
+
+Os testes gráficos se pulam sozinhos quando não há servidor gráfico.
+
+Vale dizer o que cada grupo guarda, porque quase todos nasceram de um bug que
+já aconteceu:
+
+| arquivo | o que protege |
+|---|---|
+| `test_blocos` | delimitação de `vi{`, com aninhamento e chave escapada do LaTeX |
+| `test_contexto` | os seis contextos de completação, e o `.bib` lido de pastas acima |
+| `test_build` | o desdobramento das 79 colunas do TeX e o número de linha dos avisos |
+| `test_complete` | que o parser de snippets aceita o XML — errar é silencioso |
+| `test_editor` | pares automáticos, contagem de prosa, `overwrite` do modo normal |
+| `test_teclas` | o Shift no meio de `vi{`, e que o balão nunca desliga o vim |
+| `test_arquivo` | **digitar não grava**, a sombra fora do projeto, o vigia de disco |
+| `test_formatacao` | envoltórios, aceleradores cedendo ao vim, balão só por edição |
+
 ## Estrutura
 
 ```

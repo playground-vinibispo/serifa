@@ -55,11 +55,37 @@ ERRO = re.compile(r"^! (.+)$", re.MULTILINE)
 # "l.23 \foo" -- a linha que o TeX reporta logo depois do erro.
 LINHA_DO_ERRO = re.compile(r"^l\.(\d+)", re.MULTILINE)
 AVISO = re.compile(
-    r"^(?:LaTeX|Package|Class)(?: (\S+))? Warning: (.+?)(?:\s+on input line (\d+))?\.?$",
-    re.MULTILINE,
+    r"^(?:LaTeX|Package|Class)(?: (\S+))? Warning: (.+)$", re.MULTILINE
 )
+# "on input line 12" aparece no MEIO da mensagem tanto quanto no fim --
+# "Reference `x' on input line 12 undefined." é a forma mais comum. Procurar
+# só no fim perdia o número na maioria dos avisos.
+LINHA_DE_ENTRADA = re.compile(r"on input line (\d+)")
+
+# O TeX corta a saída em max_print_line, 79 por padrão, sem recuar a
+# continuação. É o comprimento exato que diz "continua na próxima", e não a
+# indentação -- a primeira tentativa aqui usava indentação e não juntava nada.
+LARGURA_DO_TEX = 79
 # "(./arquivo.tex" -- a pilha de arquivos que o TeX abre.
 ABRE_ARQUIVO = re.compile(r"\((\.{0,2}/?[^()\s]*\.tex)")
+
+
+def _desdobrar(bruto: str) -> str:
+    """Refaz as linhas que o TeX cortou em 79 colunas.
+
+    Decidir pelo comprimento da linha ORIGINAL, e não pelo da linha já
+    juntada: uma mensagem quebrada em três pedaços tem os dois primeiros com
+    79 caracteres, e olhar para o acumulado faria o terceiro ficar de fora.
+    """
+    juntadas: list[str] = []
+    continuar = False
+    for linha in bruto.split("\n"):
+        if continuar and juntadas:
+            juntadas[-1] += linha
+        else:
+            juntadas.append(linha)
+        continuar = len(linha) == LARGURA_DO_TEX
+    return "\n".join(juntadas)
 
 
 def ler_log(caminho_do_log: Path) -> list[Diagnostico]:
@@ -69,9 +95,7 @@ def ler_log(caminho_do_log: Path) -> list[Diagnostico]:
     except OSError:
         return []
 
-    # O TeX quebra linhas longas em 79 colunas; juntar é o que torna as
-    # mensagens legíveis de novo.
-    texto = re.sub(r"\n(?! )", "\x00", bruto).replace("\n", "").replace("\x00", "\n")
+    texto = _desdobrar(bruto)
 
     diagnosticos: list[Diagnostico] = []
 
@@ -93,12 +117,14 @@ def ler_log(caminho_do_log: Path) -> list[Diagnostico]:
         )
 
     for casamento in AVISO.finditer(texto):
-        pacote, mensagem, linha = casamento.groups()
+        pacote, mensagem = casamento.groups()
         if "Rerun" in mensagem:  # ruído: o latexmk já resolve sozinho
             continue
+        onde = LINHA_DE_ENTRADA.search(mensagem)
         rotulo = f"{pacote}: {mensagem}" if pacote else mensagem
         diagnosticos.append(
-            Diagnostico("aviso", rotulo.strip(), None, int(linha) if linha else None)
+            Diagnostico("aviso", rotulo.strip(), None,
+                        int(onde.group(1)) if onde else None)
         )
 
     return diagnosticos

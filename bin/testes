@@ -1,0 +1,10 @@
+#!/usr/bin/bash
+# Suíte da Serifa. Roda com o Python do sistema, que é onde o gi vive.
+#   bin/testes            tudo
+#   bin/testes -v         verboso
+#   bin/testes testes.test_blocos    um módulo só
+cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
+if [ $# -gt 0 ] && [[ "$1" != -* ]]; then
+    exec /usr/bin/python3.12 -m unittest "$@"
+fi
+exec /usr/bin/python3.12 -m unittest discover -s testes -t . "$@"
