@@ -12,7 +12,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - run: uv run --no-project ruff check .
+      - run: uv run --group dev ruff check .
 
   testes:
     name: suíte
