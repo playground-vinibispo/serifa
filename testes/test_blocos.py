@@ -6,7 +6,7 @@ visual que funcionou de primeira.
 
 import unittest
 
-from serifa.blocos import alvo, limites_do_bloco, limites_das_aspas
+from serifa.blocos import alvo, limites_das_aspas, limites_do_bloco
 
 
 class TestAlvo(unittest.TestCase):
@@ -14,13 +14,16 @@ class TestAlvo(unittest.TestCase):
         posicao = texto.index(marca) if isinstance(marca, str) else marca
         faixa = alvo(texto, posicao, sinal, por_dentro)
         obtido = texto[faixa[0]:faixa[1]] if faixa else None
-        self.assertEqual(obtido, esperado, f"{'i' if por_dentro else 'a'}{sinal} em {texto!r}")
+        rotulo = f"{'i' if por_dentro else 'a'}{sinal} em {texto!r}"
+        self.assertEqual(obtido, esperado, rotulo)
 
     def test_chaves_por_dentro(self):
-        self.conferir(r"\textbf{palavra aqui} depois", "palavra", "{", True, "palavra aqui")
+        self.conferir(r"\textbf{palavra aqui} depois", "palavra", "{", True,
+                      "palavra aqui")
 
     def test_chaves_em_volta(self):
-        self.conferir(r"\textbf{palavra aqui} depois", "palavra", "{", False, "{palavra aqui}")
+        self.conferir(r"\textbf{palavra aqui} depois", "palavra", "{", False,
+                      "{palavra aqui}")
 
     def test_aninhamento_pega_o_interno(self):
         self.conferir(r"{a {b} c}", "b", "{", True, "b")

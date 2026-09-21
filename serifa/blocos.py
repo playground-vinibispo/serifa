@@ -93,13 +93,15 @@ def limites_das_aspas(texto: str, posicao: int, aspa: str) -> tuple[int, int] | 
         for i in range(inicio_da_linha, fim_da_linha)
         if texto[i] == aspa and not _escapado(texto, i)
     ]
-    for a, b in zip(ocorrencias[::2], ocorrencias[1::2]):
+    for a, b in zip(ocorrencias[::2], ocorrencias[1::2], strict=False):
         if a <= posicao <= b:
             return a, b
     return None
 
 
-def alvo(texto: str, posicao: int, sinal: str, por_dentro: bool) -> tuple[int, int] | None:
+def alvo(
+    texto: str, posicao: int, sinal: str, por_dentro: bool
+) -> tuple[int, int] | None:
     """Traduz `i{`, `a{`, `i"`... para o intervalo a selecionar.
 
     `por_dentro` é o `i` do vim; `False` é o `a`, que inclui os delimitadores.

@@ -17,6 +17,7 @@ no terminal o TeX quebra as mensagens em 79 colunas.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import os
 import re
@@ -37,7 +38,9 @@ class Diagnostico:
 
     @property
     def icone(self) -> str:
-        return "dialog-error-symbolic" if self.severidade == "erro" else "dialog-warning-symbolic"
+        if self.severidade == "erro":
+            return "dialog-error-symbolic"
+        return "dialog-warning-symbolic"
 
     @property
     def resumo(self) -> str:
@@ -224,10 +227,8 @@ class Compilador(GObject.Object):
 
     def _ao_terminar(self, processo: Gio.Subprocess, resultado, dados) -> None:
         pdf, log, previa = dados
-        try:
+        with contextlib.suppress(GLib.Error):
             processo.wait_finish(resultado)
-        except GLib.Error:
-            pass
         self._processo = None
 
         diagnosticos = ler_log(log)

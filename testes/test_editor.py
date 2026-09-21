@@ -3,9 +3,10 @@
 import unittest
 
 import gi
+
 gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
-from gi.repository import Gdk, Gtk
+from gi.repository import Gdk
 
 from testes.apoio import iniciar
 
@@ -119,7 +120,8 @@ class TestEditor(unittest.TestCase):
         self.buffer.place_cursor(self.buffer.get_end_iter())
         self.ed.tratar_tecla(Gdk.unicode_to_keyval(ord("v")), Gdk.ModifierType(0))
         self.buffer.insert_at_cursor("v")
-        consumiu = self.ed.tratar_tecla(Gdk.unicode_to_keyval(ord("i")), Gdk.ModifierType(0))
+        consumiu = self.ed.tratar_tecla(Gdk.unicode_to_keyval(ord("i")),
+                                        Gdk.ModifierType(0))
         self.assertFalse(consumiu)
 
 

@@ -7,6 +7,7 @@ guarda uma coisa que eu supus e estava errada.
 import unittest
 
 import gi
+
 gi.require_version("Gdk", "4.0")
 gi.require_version("Gtk", "4.0")
 from gi.repository import Gdk, Gtk
@@ -67,7 +68,9 @@ class TestTextObjects(CasoGrafico):
     def test_o_vim_nunca_e_desligado_pelo_balao(self):
         # A correção errada anterior punha o controlador em NONE enquanto o
         # balão estivesse aberto, e o modo normal parava de funcionar.
-        fase = lambda: self.editor._controlador_vim.get_propagation_phase()
+        def fase():
+            return self.editor._controlador_vim.get_propagation_phase()
+
         self.assertEqual(fase(), Gtk.PropagationPhase.CAPTURE)
         self.buffer.set_text("")
         self.digitar("\\cite{")

@@ -12,16 +12,16 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("GtkSource", "5")
 gi.require_version("Adw", "1")
 
-from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk, GtkSource
+from gi.repository import Adw, Gio, GLib, GObject, Gtk, GtkSource
 
 from . import sessao
 from .aparencia import instalar_css
 from .build import Compilador, Diagnostico
-from .documento import Documento
-from .formatacao import ATALHOS, FORMATOS, envolver
 from .complete import FonteDeChaves, preparar_snippets
 from .contexto import Acervo, Popup
+from .documento import Documento
 from .editor import Editor
+from .formatacao import ATALHOS, FORMATOS, envolver
 from .preview import Preview
 
 # O conteúdo entre chaves pode quebrar linha e conter um nível de chaves
@@ -328,7 +328,7 @@ class Janela(Adw.ApplicationWindow):
             "compilar": (self.compilar, "F5"),
             "compilar-enter": (self.compilar, "<Control>Return"),
             "buscar": (self._focar_busca, "<Control>f"),
-            "vim": (lambda: self._botao_vim.set_active(not self._botao_vim.get_active()), "<Control><Alt>v"),
+            "vim": (self._alternar_vim, "<Control><Alt>v"),
             "preview": (self._alternar_preview, "<Control><Shift>v"),
             "sumario": (self._alternar_sumario, "F9"),
             "zoom-mais": (lambda: self._preview.aplicar_zoom(1.15), "<Control>plus"),
@@ -656,7 +656,8 @@ class Janela(Adw.ApplicationWindow):
             return
         marca = " •" if self._sujo else ""
         self._titulo.set_title(f"{self._arquivo.name}{marca}")
-        self._titulo.set_subtitle(str(self._arquivo.parent).replace(str(Path.home()), "~"))
+        pasta = str(self._arquivo.parent).replace(str(Path.home()), "~")
+        self._titulo.set_subtitle(pasta)
 
     # ------------------------------------------------------------- toggles
 
@@ -681,6 +682,9 @@ class Janela(Adw.ApplicationWindow):
             botao.remove_css_class("accent")
         self._editor.grab_focus()
         self._guardar_estado()
+
+    def _alternar_vim(self) -> None:
+        self._botao_vim.set_active(not self._botao_vim.get_active())
 
     def _alternar_preview(self) -> None:
         visivel = self._preview.get_visible()
@@ -785,14 +789,13 @@ class Janela(Adw.ApplicationWindow):
         self._compilacao_continua = dados.get("continua", True)
         if posicao := dados.get("divisor"):
             self._divisor.set_position(posicao)
-        if caminho := dados.get("arquivo"):
-            if Path(caminho).exists():
-                # Só restaura se nada tiver sido aberto nesse meio-tempo: a
-                # linha de comando (do_open) chega antes deste idle, e sem a
-                # guarda a sessão anterior sobrescrevia o arquivo pedido.
-                def restaurar() -> bool:
-                    if self._arquivo is None:
-                        self.abrir(Path(caminho))
-                    return GLib.SOURCE_REMOVE
+        if (caminho := dados.get("arquivo")) and Path(caminho).exists():
+            # Só restaura se nada tiver sido aberto nesse meio-tempo: a linha
+            # de comando (do_open) chega antes deste idle, e sem a guarda a
+            # sessão anterior sobrescrevia o arquivo pedido.
+            def restaurar() -> bool:
+                if self._arquivo is None:
+                    self.abrir(Path(caminho))
+                return GLib.SOURCE_REMOVE
 
-                GLib.idle_add(restaurar)
+            GLib.idle_add(restaurar)
