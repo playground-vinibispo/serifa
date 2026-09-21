@@ -24,6 +24,7 @@ gi.require_version("Gdk", "4.0")
 
 from gi.repository import Gdk, GLib, GObject, Gtk, GtkSource
 
+from .aparencia import ENTRELINHA, largura_do_caractere, margem_para
 from .blocos import alvo
 
 try:
@@ -74,9 +75,11 @@ class Editor(GtkSource.View):
             self.buffer.set_language(idioma)
         self.buffer.set_highlight_matching_brackets(True)
 
-        self.set_monospace(True)
-        self.set_show_line_numbers(True)
-        self.set_highlight_current_line(True)
+        # Nada de número de linha, régua de 80 colunas ou realce da linha
+        # atual: são instrumentos de código. Ver serifa/aparencia.py.
+        self.set_show_line_numbers(False)
+        self.set_highlight_current_line(False)
+        self.set_show_right_margin(False)
         self.set_auto_indent(True)
         self.set_indent_on_tab(True)
         self.set_insert_spaces_instead_of_tabs(True)
@@ -84,15 +87,14 @@ class Editor(GtkSource.View):
         self.set_indent_width(2)
         self.set_smart_backspace(True)
         self.set_smart_home_end(GtkSource.SmartHomeEndType.BEFORE)
-        self.set_show_right_margin(True)
-        self.set_right_margin_position(80)
-        self.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
-        self.set_left_margin(12)
-        self.set_right_margin(12)
-        self.set_top_margin(8)
+        self.set_wrap_mode(Gtk.WrapMode.WORD)
+        self.set_top_margin(28)
         self.set_bottom_margin(240)  # deixa a última linha subir até o meio da tela
-        self.set_pixels_above_lines(1)
-        self.set_pixels_below_lines(1)
+        self.set_pixels_above_lines(ENTRELINHA // 2)
+        self.set_pixels_below_lines(ENTRELINHA // 2)
+        self.set_pixels_inside_wrap(ENTRELINHA // 2)
+        self.add_css_class("serifa-editor")
+        self._margem_atual = -1
 
         self._vim: GtkSource.VimIMContext | None = None
         self._controlador_vim: Gtk.EventControllerKey | None = None
@@ -112,6 +114,22 @@ class Editor(GtkSource.View):
 
         self._adaptador_ortografico = None
         self._preparar_ortografia()
+
+    def do_size_allocate(self, largura: int, altura: int, linha_base: int) -> None:
+        """Centra a coluna de texto na largura disponível.
+
+        No GTK4 não existe sinal de realocação para widget: "notify::width"
+        não existe e conectar nele não faz nada. A forma é esta vfunc. A
+        margem só é escrita quando muda, porque mexer em margem dispara nova
+        alocação e reescrever o mesmo número a cada passagem é um laço.
+        """
+        if largura > 0:
+            margem = margem_para(largura, largura_do_caractere(self))
+            if margem != self._margem_atual:
+                self._margem_atual = margem
+                self.set_left_margin(margem)
+                self.set_right_margin(margem)
+        GtkSource.View.do_size_allocate(self, largura, altura, linha_base)
 
     # ------------------------------------------------------------------ vim
 

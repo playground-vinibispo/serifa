@@ -23,6 +23,18 @@ sintaxe e rasterização de PDF. Aqui as três são C:
 Tauri poria um WebView entre você e o texto. Se um dia o Python incomodar, o
 caminho é gtk-rs: mesmos widgets, mesma aparência, sem trocar de arquitetura.
 
+## Tipografia
+
+Isto não é um editor de código, e por isso não há número de linha, régua de 80
+colunas nem realce da linha atual — instrumentos de quem navega por endereço,
+não de quem lê um argumento de cem palavras. A coluna de texto é limitada a 74
+caracteres por margens recalculadas a cada realocação, e a quebra é por palavra
+inteira. Fonte: JetBrains Mono.
+
+**Cores não.** Houve uma tentativa de impor uma paleta de papel, com a marcação
+LaTeX recuada e a prosa em tinta cheia; foi revertida a pedido. O esquema é o
+padrão do GtkSourceView, que é escolha de quem escreve.
+
 ## O que tem
 
 | | |
@@ -143,6 +155,7 @@ já aconteceu:
 | `test_complete` | que o parser de snippets aceita o XML — errar é silencioso |
 | `test_editor` | pares automáticos, contagem de prosa, `overwrite` do modo normal |
 | `test_teclas` | o Shift no meio de `vi{`, e que o balão nunca desliga o vim |
+| `test_aparencia` | que o mobiliário de código não volta, e a medida da coluna |
 | `test_documento` | o arquivo aberto, sem janela: gravar, recarregar, conflito |
 | `test_arquivo` | **digitar não grava**, a sombra fora do projeto, a guarda ao trocar |
 | `test_formatacao` | envoltórios, aceleradores cedendo ao vim, balão só por edição |
@@ -155,6 +168,7 @@ serifa/
 ├── editor.py     GtkSource.View, vim, pares automáticos, ortografia
 ├── formatacao.py os envoltórios \textbf{...} e a tabela que os descreve
 ├── sessao.py     o que a janela lembra entre uma abertura e outra
+├── aparencia.py  tipografia e medida da coluna — sem paleta
 ├── blocos.py     delimitação de blocos: o `i{` e `a(` que faltam no visual
 ├── preview.py    Poppler + cairo, rolagem contínua
 ├── build.py      latexmk assíncrono e leitura do .log

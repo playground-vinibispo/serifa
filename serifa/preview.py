@@ -163,9 +163,10 @@ class Preview(Gtk.Box):
             # Só rasteriza o que está (quase) à vista.
             if y + desenhada_altura >= topo_visivel - 200 and y <= base_visivel + 200:
                 ctx.save()
-                # Sombra discreta, para a página se destacar do fundo.
-                ctx.set_source_rgba(0, 0, 0, 0.18)
-                ctx.rectangle(x + 2, y + 2, desenhada_largura, desenhada_altura)
+                # Fio em volta da folha, não sombra difusa: sombra cinza sob
+                # tudo é o que faz uma interface parecer amontoado de cartões.
+                ctx.set_source_rgba(0, 0, 0, 0.28)
+                ctx.rectangle(x - 1, y - 1, desenhada_largura + 2, desenhada_altura + 2)
                 ctx.fill()
                 # O papel é sempre branco, mesmo no tema escuro: é o que o
                 # professor vai ver impresso.
