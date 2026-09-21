@@ -1,0 +1,4 @@
+#!/usr/bin/bash
+# Análise estática. Roda o mesmo que a CI roda.
+cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
+exec uv run --no-project ruff check .

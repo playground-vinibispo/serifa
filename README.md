@@ -126,6 +126,31 @@ apenas pula o cursor.
 reconhece a sequência `v` → `i`/`a` → sinal. O `v` segue para o vim, que entra
 em modo visual de verdade; o `i` e o sinal são consumidos antes do filtro.
 
+## Desenvolvimento
+
+```sh
+bin/preparar          # cria o .venv e instala ruff e coverage
+bin/conferir          # ruff, o mesmo que a CI roda
+bin/testes            # a suíte
+bin/testes --cobertura
+bin/instalar-hooks    # opcional: pre-push roda os dois
+```
+
+O `bin/preparar` cria o venv com `--system-site-packages` sobre o Python do
+sistema, e isso não é detalhe: o PyGObject vem do sistema, e um venv isolado
+não enxergaria `gi`, GtkSourceView nem Poppler. Instalar PyGObject por pip
+criaria uma segunda cópia cega às bibliotecas GObject instaladas. O efeito
+colateral bom é que o `coverage` passa a rodar no mesmo interpretador dos
+testes, o que antes era impossível.
+
+A CI roda os dois em cada push e PR. Os testes que precisam de `latexmk` se
+pulam sozinhos, para não baixar um texlive inteiro no runner; os de janela
+rodam sob Xvfb, porque o GTK4 não tem backend offscreen.
+
+Cobertura hoje: 78%. O buraco é `preview.py`, em 35% — a rasterização não é
+testável sem olhar, mas a geometria e a navegação entre páginas são, e não
+estão cobertas.
+
 ## Testes
 
 ```sh
