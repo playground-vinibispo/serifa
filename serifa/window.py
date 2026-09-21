@@ -356,8 +356,11 @@ class Janela(Adw.ApplicationWindow):
             arquivo = dialogo.open_finish(resultado)
         except GLib.Error:
             return
-        if arquivo is not None:
-            self.abrir(Path(arquivo.get_path()))
+        if arquivo is None:
+            return
+        caminho = Path(arquivo.get_path())
+        if not self._resolver_pendencias(lambda: self.abrir(caminho)):
+            self.abrir(caminho)
 
     def abrir(self, caminho: Path) -> None:
         try:
@@ -800,13 +803,21 @@ class Janela(Adw.ApplicationWindow):
 
     # ------------------------------------------------------------ fechamento
 
-    def _ao_pedir_fechamento(self, *_args) -> bool:
-        """Bloqueia o fechamento enquanto houver alteração não gravada."""
+    def _resolver_pendencias(self, seguir) -> bool:
+        """Pergunta antes de descartar alteração não gravada.
+
+        Devolve True quando a ação foi adiada até a resposta, e False quando
+        não havia nada a resolver -- nesse caso quem chamou segue em frente.
+
+        Serve tanto ao fechamento quanto à troca de arquivo. Fechar já
+        perguntava; abrir outro arquivo substituía o buffer em silêncio, o que
+        é perda de dados e não incômodo.
+        """
         if not self._sujo or self._arquivo is None:
-            return False  # deixa fechar
+            return False
 
         dialogo = Adw.AlertDialog(
-            heading="Salvar antes de sair?",
+            heading="Salvar antes de continuar?",
             body=f"As alterações em {self._arquivo.name} não foram gravadas.",
         )
         dialogo.add_response("cancelar", "Cancelar")
@@ -816,20 +827,30 @@ class Janela(Adw.ApplicationWindow):
         dialogo.set_response_appearance("salvar", Adw.ResponseAppearance.SUGGESTED)
         dialogo.set_default_response("salvar")
         dialogo.set_close_response("cancelar")
-        dialogo.choose(self, None, self._ao_responder_fechamento)
-        return True  # segura a janela até a resposta
+        dialogo.choose(
+            self, None, lambda d, r: self._ao_responder(d, r, seguir)
+        )
+        return True
 
-    def _ao_responder_fechamento(self, dialogo, resultado) -> None:
+    def _ao_responder(self, dialogo, resultado, seguir) -> None:
         try:
             resposta = dialogo.choose_finish(resultado)
         except GLib.Error:
             return
+        self._aplicar_resposta(resposta, seguir)
+
+    def _aplicar_resposta(self, resposta: str, seguir) -> None:
+        """A decisão em si, separada do diálogo para poder ser testada."""
         if resposta == "cancelar":
             return
         if resposta == "salvar" and not self._gravar():
             return
-        self._sujo = False  # o close-request seguinte passa direto
-        self.close()
+        self._sujo = False   # o próximo close-request passa direto
+        self._atualizar_titulo()
+        seguir()
+
+    def _ao_pedir_fechamento(self, *_args) -> bool:
+        return self._resolver_pendencias(self.close)
 
     # -------------------------------------------------------- persistência
 

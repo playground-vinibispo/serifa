@@ -113,3 +113,62 @@ class TestVigia(CasoGrafico):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestGuardaAoTrocarDeArquivo(CasoGrafico):
+    """Trocar de arquivo com alteração pendente não pode engolir o texto.
+
+    Fechar a janela já perguntava; abrir outro arquivo não, e substituía o
+    buffer em silêncio. Era perda de dados, não incômodo.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.um = self.arquivo("um.tex", "conteudo do um\n")
+        self.dois = self.arquivo("dois.tex", "conteudo do dois\n")
+        self.janela.abrir(self.um)
+        bombear(200)
+
+    def test_limpo_troca_direto(self):
+        self.assertFalse(self.janela._resolver_pendencias(lambda: None))
+
+    def test_sujo_adia_a_troca(self):
+        self.digitar("mexido ")
+        seguiu = []
+        self.assertTrue(self.janela._resolver_pendencias(lambda: seguiu.append(1)))
+        self.assertEqual(seguiu, [], "trocou antes de perguntar")
+
+    def test_cancelar_nao_segue_e_preserva(self):
+        self.digitar("mexido ")
+        seguiu = []
+        self.janela._aplicar_resposta("cancelar", lambda: seguiu.append(1))
+        self.assertEqual(seguiu, [])
+        self.assertIn("mexido", self.texto)
+        self.assertTrue(self.janela._sujo)
+
+    def test_descartar_segue_sem_gravar(self):
+        self.digitar("mexido ")
+        seguiu = []
+        self.janela._aplicar_resposta("descartar", lambda: seguiu.append(1))
+        self.assertEqual(seguiu, [1])
+        self.assertNotIn("mexido", self.um.read_text(encoding="utf-8"))
+        self.assertFalse(self.janela._sujo)
+
+    def test_salvar_grava_e_segue(self):
+        self.digitar("mexido ")
+        seguiu = []
+        self.janela._aplicar_resposta("salvar", lambda: seguiu.append(1))
+        self.assertEqual(seguiu, [1])
+        self.assertIn("mexido", self.um.read_text(encoding="utf-8"))
+        self.assertFalse(self.janela._sujo)
+
+    def test_abrir_outro_depois_de_descartar(self):
+        self.digitar("mexido ")
+        self.janela._aplicar_resposta("descartar", lambda: self.janela.abrir(self.dois))
+        bombear(150)
+        self.assertIn("conteudo do dois", self.texto)
+        self.assertEqual(self.janela._arquivo, self.dois)
+
+    def test_fechar_usa_a_mesma_guarda(self):
+        self.digitar("mexido ")
+        self.assertTrue(self.janela._ao_pedir_fechamento())
