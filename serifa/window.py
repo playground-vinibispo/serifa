@@ -14,14 +14,14 @@ gi.require_version("Adw", "1")
 
 from gi.repository import Adw, Gio, GLib, GObject, Gtk, GtkSource
 
-from . import sessao
-from .aparencia import instalar_css
+from . import session
+from .appearance import install_css
 from .build import Compilador, Diagnostico
 from .complete import FonteDeChaves, preparar_snippets
 from .contexto import Acervo, Popup
 from .documento import Documento
 from .editor import Editor
-from .formatacao import ATALHOS, FORMATOS, envolver
+from .formatting import FORMATS, SHORTCUTS, wrap
 from .preview import Preview
 
 # O conteúdo entre chaves pode quebrar linha e conter um nível de chaves
@@ -33,7 +33,7 @@ SECAO = re.compile(
 )
 NIVEL = {"chapter": 0, "section": 0, "subsection": 1, "subsubsection": 2, "paragraph": 3}
 
-ESTADO = sessao.PADRAO
+ESTADO = session.DEFAULT
 
 
 class Janela(Adw.ApplicationWindow):
@@ -86,7 +86,7 @@ class Janela(Adw.ApplicationWindow):
     # ---------------------------------------------------------------- UI
 
     def _montar(self) -> None:
-        instalar_css()
+        install_css()
         self._editor = Editor()
         self.buffer = self._editor.buffer
         self._documento = Documento(self.buffer)
@@ -521,11 +521,11 @@ class Janela(Adw.ApplicationWindow):
 
     # ------------------------------------------------------------ formatação
 
-    FORMATOS = FORMATOS
-    ATALHOS_DE_FORMATACAO = ATALHOS
+    FORMATOS = FORMATS
+    ATALHOS_DE_FORMATACAO = SHORTCUTS
 
     def formatar(self, comando: str) -> None:
-        envolver(self._editor.buffer, comando)
+        wrap(self._editor.buffer, comando)
         self._editor.grab_focus()
 
     # -------------------------------------------------------- conferidor
@@ -773,7 +773,7 @@ class Janela(Adw.ApplicationWindow):
     # -------------------------------------------------------- persistência
 
     def _guardar_estado(self) -> None:
-        sessao.gravar(ESTADO, {
+        session.write(ESTADO, {
             "arquivo": str(self._arquivo) if self._arquivo else None,
             "vim": self._botao_vim.get_active(),
             "continua": self._compilacao_continua,
@@ -781,7 +781,7 @@ class Janela(Adw.ApplicationWindow):
         })
 
     def _restaurar_estado(self) -> None:
-        dados = sessao.ler(ESTADO)
+        dados = session.read(ESTADO)
         if not dados:
             return
         if dados.get("vim"):

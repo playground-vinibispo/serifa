@@ -24,8 +24,8 @@ gi.require_version("Gdk", "4.0")
 
 from gi.repository import Gdk, GLib, GObject, Gtk, GtkSource
 
-from .aparencia import ENTRELINHA, largura_do_caractere, margem_para
-from .blocos import alvo
+from .appearance import LEADING, character_width, margin_for
+from .blocks import target
 
 try:
     gi.require_version("Spelling", "1")
@@ -90,9 +90,9 @@ class Editor(GtkSource.View):
         self.set_wrap_mode(Gtk.WrapMode.WORD)
         self.set_top_margin(28)
         self.set_bottom_margin(240)  # deixa a última linha subir até o meio da tela
-        self.set_pixels_above_lines(ENTRELINHA // 2)
-        self.set_pixels_below_lines(ENTRELINHA // 2)
-        self.set_pixels_inside_wrap(ENTRELINHA // 2)
+        self.set_pixels_above_lines(LEADING // 2)
+        self.set_pixels_below_lines(LEADING // 2)
+        self.set_pixels_inside_wrap(LEADING // 2)
         self.add_css_class("serifa-editor")
         self._margem_atual = -1
 
@@ -124,7 +124,7 @@ class Editor(GtkSource.View):
         alocação e reescrever o mesmo número a cada passagem é um laço.
         """
         if largura > 0:
-            margem = margem_para(largura, largura_do_caractere(self))
+            margem = margin_for(largura, character_width(self))
             if margem != self._margem_atual:
                 self._margem_atual = margem
                 self.set_left_margin(margem)
@@ -268,7 +268,7 @@ class Editor(GtkSource.View):
     def _selecionar_bloco(self, sinal: str, por_dentro: bool) -> bool:
         texto = self.texto
         cursor = self.buffer.get_iter_at_mark(self.buffer.get_insert())
-        faixa = alvo(texto, cursor.get_offset(), sinal, por_dentro)
+        faixa = target(texto, cursor.get_offset(), sinal, por_dentro)
         if faixa is None:
             return False
 

@@ -41,24 +41,24 @@ class TestMobiliarioDeCodigo(unittest.TestCase):
         self.assertEqual(self.ed.get_wrap_mode(), Gtk.WrapMode.WORD)
 
     def test_nao_impoe_esquema_de_cores(self):
-        from serifa import aparencia
-        self.assertFalse(hasattr(aparencia, "instalar_esquema"),
+        from serifa import appearance
+        self.assertFalse(hasattr(appearance, "install_scheme"),
                          "a paleta é escolha do usuário")
 
 
 class TestMedidaDaColuna(CasoGrafico):
     def caracteres_visiveis(self):
-        from serifa.aparencia import largura_do_caractere
+        from serifa.appearance import character_width
         largura = self.editor.get_width() - self.editor.get_left_margin() \
             - self.editor.get_right_margin()
-        return largura // max(1, largura_do_caractere(self.editor))
+        return largura // max(1, character_width(self.editor))
 
     def test_painel_largo_limita_a_medida(self):
-        from serifa.aparencia import MEDIDA
+        from serifa.appearance import MEASURE
         self.janela.set_default_size(1900, 1000)
         self.janela._divisor.set_position(1300)
         bombear(500)
-        self.assertLessEqual(self.caracteres_visiveis(), MEDIDA + 2)
+        self.assertLessEqual(self.caracteres_visiveis(), MEASURE + 2)
         self.assertGreater(self.editor.get_left_margin(), 24)
 
     def test_painel_estreito_usa_a_margem_minima(self):
@@ -72,9 +72,9 @@ class TestMedidaDaColuna(CasoGrafico):
         self.assertEqual(self.editor.get_left_margin(), self.editor.get_right_margin())
 
     def test_fonte_do_editor(self):
-        from serifa.aparencia import FONTE
+        from serifa.appearance import FONT
         familia = self.editor.get_pango_context().get_font_description().get_family()
-        self.assertIn(FONTE, familia)
+        self.assertIn(FONT, familia)
 
 
 if __name__ == "__main__":

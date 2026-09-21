@@ -6,13 +6,13 @@ visual que funcionou de primeira.
 
 import unittest
 
-from serifa.blocos import alvo, limites_das_aspas, limites_do_bloco
+from serifa.blocks import block_bounds, quote_bounds, target
 
 
 class TestAlvo(unittest.TestCase):
     def conferir(self, texto, marca, sinal, por_dentro, esperado):
         posicao = texto.index(marca) if isinstance(marca, str) else marca
-        faixa = alvo(texto, posicao, sinal, por_dentro)
+        faixa = target(texto, posicao, sinal, por_dentro)
         obtido = texto[faixa[0]:faixa[1]] if faixa else None
         rotulo = f"{'i' if por_dentro else 'a'}{sinal} em {texto!r}"
         self.assertEqual(obtido, esperado, rotulo)
@@ -62,15 +62,15 @@ class TestAlvo(unittest.TestCase):
         self.conferir(r"sem nada aqui", "nada", "{", True, None)
 
     def test_sinal_desconhecido(self):
-        self.assertIsNone(alvo("texto qualquer", 3, "@", True))
+        self.assertIsNone(target("texto qualquer", 3, "@", True))
 
     def test_texto_vazio(self):
-        self.assertIsNone(limites_do_bloco("", 0, "{", "}"))
+        self.assertIsNone(block_bounds("", 0, "{", "}"))
 
     def test_aspas_nao_atravessam_linha(self):
         # Aspas não aninham: a paridade é contada por linha, senão uma aspa
         # solta numa linha casaria com outra três parágrafos abaixo.
-        self.assertIsNone(limites_das_aspas('diz "aberta\noutra linha"', 5, '"'))
+        self.assertIsNone(quote_bounds('diz "aberta\noutra linha"', 5, '"'))
 
 
 if __name__ == "__main__":
