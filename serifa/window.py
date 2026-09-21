@@ -2,7 +2,6 @@ r"""A janela: sumário, editor, preview, diagnósticos e barra de estado."""
 
 from __future__ import annotations
 
-import json
 import re
 import subprocess
 from pathlib import Path
@@ -15,7 +14,10 @@ gi.require_version("Adw", "1")
 
 from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk, GtkSource
 
+from . import sessao
 from .build import Compilador, Diagnostico
+from .documento import Documento
+from .formatacao import ATALHOS, FORMATOS, envolver
 from .complete import FonteDeChaves, preparar_snippets
 from .contexto import Acervo, Popup
 from .editor import Editor
@@ -30,7 +32,7 @@ SECAO = re.compile(
 )
 NIVEL = {"chapter": 0, "section": 0, "subsection": 1, "subsubsection": 2, "paragraph": 3}
 
-ESTADO = Path(GLib.get_user_config_dir()) / "serifa" / "estado.json"
+ESTADO = sessao.PADRAO
 
 
 class Janela(Adw.ApplicationWindow):
@@ -42,13 +44,10 @@ class Janela(Adw.ApplicationWindow):
         self.set_title("Serifa")
         self.set_default_size(1500, 940)
 
-        self._arquivo: Path | None = None
-        self._sujo = False
         self._temporizador_compilacao = 0
         self._temporizador_sumario = 0
         self._compilacao_continua = True
         self._diagnosticos: list[Diagnostico] = []
-        self._vigia: Gio.FileMonitor | None = None
 
         self._compilador = Compilador()
         self._compilador.connect("comecou", self._ao_comecar_compilacao)
@@ -75,10 +74,24 @@ class Janela(Adw.ApplicationWindow):
             return True
         return self._editor.tratar_tecla(keyval, estado)
 
+    @property
+    def _arquivo(self) -> Path | None:
+        return self._documento.caminho
+
+    @property
+    def _sujo(self) -> bool:
+        return self._documento.sujo
+
     # ---------------------------------------------------------------- UI
 
     def _montar(self) -> None:
         self._editor = Editor()
+        self.buffer = self._editor.buffer
+        self._documento = Documento(self.buffer)
+        self._documento.connect("sujeira-mudou", self._ao_mudar_sujeira)
+        self._documento.connect("recarregado", self._ao_recarregar)
+        self._documento.connect("conflito", self._ao_conflito)
+        self._documento.connect("falhou", lambda _d, m: self._avisar(m))
         self._editor.buffer.connect("changed", self._ao_mudar_texto)
         self._editor.connect("cursor-movido", self._ao_mover_cursor)
 
@@ -363,22 +376,11 @@ class Janela(Adw.ApplicationWindow):
             self.abrir(caminho)
 
     def abrir(self, caminho: Path) -> None:
-        try:
-            texto = caminho.read_text(encoding="utf-8")
-        except OSError as erro:
-            self._avisar(f"Não deu para abrir: {erro}")
+        if not self._documento.abrir(caminho):
             return
 
-        self._editor.buffer.begin_irreversible_action()
-        self._editor.buffer.set_text(texto)
-        self._editor.buffer.end_irreversible_action()
-        self._editor.buffer.set_modified(False)
-        self._editor.buffer.place_cursor(self._editor.buffer.get_start_iter())
-
-        self._arquivo = caminho
-        self._sujo = False
+        texto = self._documento.texto
         self._popup.reiniciar()
-        self._vigiar(caminho)
         self._chaves.definir_pasta(caminho.parent)
         self._acervo.definir_pasta(caminho.parent)
         self._chaves.atualizar(texto)
@@ -416,76 +418,31 @@ class Janela(Adw.ApplicationWindow):
         except GLib.Error:
             return
         if arquivo is not None:
-            self._arquivo = Path(arquivo.get_path())
+            self._documento.definir_caminho(Path(arquivo.get_path()))
             self._chaves.definir_pasta(self._arquivo.parent)
             self._acervo.definir_pasta(self._arquivo.parent)
             self.salvar()
 
     # ------------------------------------------------- arquivo mexido fora
 
-    def _vigiar(self, caminho: Path) -> None:
-        """Observa o arquivo aberto, para o editor não competir com o disco."""
-        if self._vigia is not None:
-            self._vigia.cancel()
-        self._vigia = Gio.File.new_for_path(str(caminho)).monitor_file(
-            Gio.FileMonitorFlags.NONE, None
-        )
-        self._vigia.connect("changed", self._ao_mudar_no_disco)
+    def _ao_conflito(self, _documento, nome: str) -> None:
+        """O disco divergiu e há trabalho não gravado. Quem decide é o usuário."""
+        self._aviso.set_title(f"{nome} mudou no disco, e há alterações não salvas aqui")
+        self._aviso.set_revealed(True)
 
-    def _ao_mudar_no_disco(self, _monitor, _arquivo, _outro, evento) -> None:
-        if evento not in (
-            Gio.FileMonitorEvent.CHANGES_DONE_HINT,
-            Gio.FileMonitorEvent.CREATED,
-        ):
-            return
-        if self._arquivo is None:
-            return
-        try:
-            em_disco = self._arquivo.read_text(encoding="utf-8")
-        except OSError:
-            return
+    def _ao_recarregar(self, _documento) -> None:
+        self._aviso.set_revealed(False)
+        self._editor.scroll_to_mark(self.buffer.get_insert(), 0.25, True, 0.0, 0.35)
+        self._reconstruir_sumario()
+        self._avisar(f"{self._documento.nome} recarregado do disco")
 
-        # Nossa própria gravação dispara o vigia: se o disco já é o que está
-        # na tela, não há nada a fazer.
-        if em_disco == self._editor.texto:
+    def _ao_mudar_sujeira(self, _documento, sujo: bool) -> None:
+        if not sujo:
             self._aviso.set_revealed(False)
-            return
-
-        if self._sujo:
-            # Com alteração não gravada, recarregar sozinho apagaria o
-            # trabalho de alguém -- quem decide é o usuário.
-            self._aviso.set_title(
-                f"{self._arquivo.name} mudou no disco, e há alterações não salvas aqui"
-            )
-            self._aviso.set_revealed(True)
-        else:
-            self._recarregar()
-            self._avisar(f"{self._arquivo.name} recarregado do disco")
+        self._atualizar_titulo()
 
     def _recarregar(self) -> None:
-        """Relê o arquivo preservando onde o cursor estava."""
-        if self._arquivo is None:
-            return
-        try:
-            texto = self._arquivo.read_text(encoding="utf-8")
-        except OSError as erro:
-            self._avisar(f"Não deu para recarregar: {erro}")
-            return
-
-        buffer = self._editor.buffer
-        onde = buffer.get_iter_at_mark(buffer.get_insert()).get_offset()
-        buffer.begin_irreversible_action()
-        buffer.set_text(texto)
-        buffer.end_irreversible_action()
-        buffer.set_modified(False)
-        self._sujo = False
-        self._aviso.set_revealed(False)
-        buffer.place_cursor(
-            buffer.get_iter_at_offset(min(onde, buffer.get_char_count()))
-        )
-        self._editor.scroll_to_mark(buffer.get_insert(), 0.25, True, 0.0, 0.35)
-        self._atualizar_titulo()
-        self._reconstruir_sumario()
+        self._documento.recarregar()
 
     # ----------------------------------------------------- compilação
 
@@ -509,15 +466,7 @@ class Janela(Adw.ApplicationWindow):
         self._compilador.compilar_previa(self._editor.texto, self._arquivo)
 
     def _gravar(self) -> bool:
-        try:
-            self._arquivo.write_text(self._editor.texto, encoding="utf-8")
-        except OSError as erro:
-            self._avisar(f"Não deu para salvar: {erro}")
-            return False
-        self._editor.buffer.set_modified(False)
-        self._sujo = False
-        self._atualizar_titulo()
-        return True
+        return self._documento.gravar()
 
     def _ao_comecar_compilacao(self, _compilador, previa: bool) -> None:
         self._estado_compilacao.set_label("prévia…" if previa else "compilando…")
@@ -569,42 +518,11 @@ class Janela(Adw.ApplicationWindow):
 
     # ------------------------------------------------------------ formatação
 
-    # (ação, comando LaTeX, ícone, rótulo no menu)
-    FORMATOS = [
-        ("negrito", "textbf", "format-text-bold-symbolic", "Negrito"),
-        ("italico", "textit", "format-text-italic-symbolic", "Itálico"),
-        ("sublinhado", "underline", "format-text-underline-symbolic", "Sublinhado"),
-        ("monoespaco", "texttt", None, "Monoespaçado"),
-        ("enfase", "emph", None, "Ênfase"),
-        ("citacao", "enquote", None, "Entre aspas"),
-        ("nota", "footnote", None, "Nota de rodapé"),
-    ]
+    FORMATOS = FORMATOS
+    ATALHOS_DE_FORMATACAO = ATALHOS
 
     def formatar(self, comando: str) -> None:
-        """Envolve a seleção em \\comando{...}, ou abre as chaves no cursor."""
-        buffer = self._editor.buffer
-        abertura, fechamento = f"\\{comando}{{", "}"
-
-        buffer.begin_user_action()
-        # No PyGObject isto devolve (inicio, fim) havendo seleção e () sem --
-        # não um booleano na frente, como a assinatura em C sugere.
-        limites = buffer.get_selection_bounds()
-        if limites:
-            inicio, fim = limites
-            selecionado = buffer.get_text(inicio, fim, True)
-            marca = buffer.create_mark(None, inicio, True)
-            buffer.delete(inicio, fim)
-            onde = buffer.get_iter_at_mark(marca)
-            buffer.insert(onde, f"{abertura}{selecionado}{fechamento}")
-            buffer.delete_mark(marca)
-        else:
-            cursor = buffer.get_iter_at_mark(buffer.get_insert())
-            dentro = cursor.get_offset() + len(abertura)
-            # Inserido de uma vez: os pares automáticos só reagem a caractere
-            # solto, então o } daqui não vira dois.
-            buffer.insert(cursor, abertura + fechamento)
-            buffer.place_cursor(buffer.get_iter_at_offset(dentro))
-        buffer.end_user_action()
+        envolver(self._editor.buffer, comando)
         self._editor.grab_focus()
 
     # -------------------------------------------------------- conferidor
@@ -693,9 +611,7 @@ class Janela(Adw.ApplicationWindow):
     # ------------------------------------------------------------- estado
 
     def _ao_mudar_texto(self, _buffer) -> None:
-        if not self._sujo:
-            self._sujo = True
-            self._atualizar_titulo()
+        self._documento.sujar()
 
         if self._temporizador_sumario:
             GLib.source_remove(self._temporizador_sumario)
@@ -784,10 +700,6 @@ class Janela(Adw.ApplicationWindow):
     def _avisar(self, mensagem: str) -> None:
         self._toasts.add_toast(Adw.Toast(title=mensagem, timeout=3))
 
-    # os dois que o mundo espera; os demais ficam só no menu, para não
-    # atropelar mais teclas do vim do que o necessário
-    ATALHOS_DE_FORMATACAO = {"negrito": "<Control>b", "italico": "<Control>i"}
-
     def _aplicar_atalhos_de_formatacao(self, ligados: bool) -> None:
         """Com o vim ligado, Ctrl+B e Ctrl+I voltam a ser dele.
 
@@ -845,8 +757,7 @@ class Janela(Adw.ApplicationWindow):
             return
         if resposta == "salvar" and not self._gravar():
             return
-        self._sujo = False   # o próximo close-request passa direto
-        self._atualizar_titulo()
+        self._documento._limpar()   # o próximo close-request passa direto
         seguir()
 
     def _ao_pedir_fechamento(self, *_args) -> bool:
@@ -855,27 +766,16 @@ class Janela(Adw.ApplicationWindow):
     # -------------------------------------------------------- persistência
 
     def _guardar_estado(self) -> None:
-        try:
-            ESTADO.parent.mkdir(parents=True, exist_ok=True)
-            ESTADO.write_text(
-                json.dumps(
-                    {
-                        "arquivo": str(self._arquivo) if self._arquivo else None,
-                        "vim": self._botao_vim.get_active(),
-                        "continua": self._compilacao_continua,
-                        "divisor": self._divisor.get_position(),
-                    },
-                    indent=2,
-                ),
-                encoding="utf-8",
-            )
-        except OSError:
-            pass
+        sessao.gravar(ESTADO, {
+            "arquivo": str(self._arquivo) if self._arquivo else None,
+            "vim": self._botao_vim.get_active(),
+            "continua": self._compilacao_continua,
+            "divisor": self._divisor.get_position(),
+        })
 
     def _restaurar_estado(self) -> None:
-        try:
-            dados = json.loads(ESTADO.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+        dados = sessao.ler(ESTADO)
+        if not dados:
             return
         if dados.get("vim"):
             self._botao_vim.set_active(True)

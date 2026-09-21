@@ -143,14 +143,18 @@ já aconteceu:
 | `test_complete` | que o parser de snippets aceita o XML — errar é silencioso |
 | `test_editor` | pares automáticos, contagem de prosa, `overwrite` do modo normal |
 | `test_teclas` | o Shift no meio de `vi{`, e que o balão nunca desliga o vim |
-| `test_arquivo` | **digitar não grava**, a sombra fora do projeto, o vigia de disco |
+| `test_documento` | o arquivo aberto, sem janela: gravar, recarregar, conflito |
+| `test_arquivo` | **digitar não grava**, a sombra fora do projeto, a guarda ao trocar |
 | `test_formatacao` | envoltórios, aceleradores cedendo ao vim, balão só por edição |
 
 ## Estrutura
 
 ```
 serifa/
+├── documento.py  o arquivo aberto: ler, gravar, sujeira, vigia do disco
 ├── editor.py     GtkSource.View, vim, pares automáticos, ortografia
+├── formatacao.py os envoltórios \textbf{...} e a tabela que os descreve
+├── sessao.py     o que a janela lembra entre uma abertura e outra
 ├── blocos.py     delimitação de blocos: o `i{` e `a(` que faltam no visual
 ├── preview.py    Poppler + cairo, rolagem contínua
 ├── build.py      latexmk assíncrono e leitura do .log
