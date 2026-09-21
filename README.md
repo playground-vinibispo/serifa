@@ -23,33 +23,6 @@ sintaxe e rasterização de PDF. Aqui as três são C:
 Tauri poria um WebView entre você e o texto. Se um dia o Python incomodar, o
 caminho é gtk-rs: mesmos widgets, mesma aparência, sem trocar de arquitetura.
 
-## A aparência
-
-O editor não é um editor de código, e a aparência diz isso. O realce é
-**invertido** em relação ao costume: num editor de código o comando grita e o
-texto fica cinza; aqui a prosa recebe tinta cheia e `\section*`, `\textbf` e as
-chaves recuam para um cinza quente. O que você lê e julga é o texto.
-
-Pela mesma razão não há número de linha, régua de 80 colunas nem realce da
-linha atual: servem a código, não a um parágrafo de cem palavras. A coluna de
-texto é limitada a 74 caracteres por margens recalculadas a cada realocação.
-
-Duas superfícies de papel, lado a lado — a folha de trabalho e a prova
-impressa — dentro de um quadro que segue o tema do sistema. A paleta tem seis
-cores, e o vermelho é usado em um lugar só: erro.
-
-| | |
-|---|---|
-| `#FAF8F3` | papel, a folha de trabalho |
-| `#23211D` | tinta, a prosa |
-| `#A79E90` | marcação recuada: comandos, chaves, comentários |
-| `#6B6255` | estrutura: `\section`, `\begin`, `\input` |
-| `#3E5C50` | a segunda pena: matemática |
-| `#A33B2A` | erro, e só erro |
-
-Fonte: JetBrains Mono. O esquema é gerado em `serifa/aparencia.py`, pelo mesmo
-motivo dos snippets — as cores ficam definidas uma vez, em Python.
-
 ## O que tem
 
 | | |

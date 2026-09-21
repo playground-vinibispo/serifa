@@ -15,7 +15,6 @@ gi.require_version("Adw", "1")
 
 from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk, GtkSource
 
-from .aparencia import instalar_css
 from .build import Compilador, Diagnostico
 from .complete import FonteDeChaves, preparar_snippets
 from .contexto import Acervo, Popup
@@ -79,7 +78,6 @@ class Janela(Adw.ApplicationWindow):
     # ---------------------------------------------------------------- UI
 
     def _montar(self) -> None:
-        instalar_css()
         self._editor = Editor()
         self._editor.buffer.connect("changed", self._ao_mudar_texto)
         self._editor.connect("cursor-movido", self._ao_mover_cursor)
@@ -284,7 +282,6 @@ class Janela(Adw.ApplicationWindow):
         for rotulo in (self._estado_posicao, self._estado_palavras,
                        self._estado_vim, self._estado_comando):
             rotulo.add_css_class("dim-label")
-            rotulo.add_css_class("serifa-estado")
             barra_estado.append(rotulo)
         barra_estado.append(self._estado_compilacao)
 
