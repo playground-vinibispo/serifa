@@ -9,13 +9,13 @@ silenciosa.
 import unittest
 import xml.etree.ElementTree as ET
 
-from serifa.complete import AMBIENTES, COMANDOS, LETRAS_GREGAS, preparar_snippets
+from serifa.complete import COMMANDS, ENVIRONMENTS, GREEK_LETTERS, prepare_snippets
 
 
 class TestSnippets(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.pasta = preparar_snippets()
+        cls.pasta = prepare_snippets()
         cls.arquivo = cls.pasta / "latex.snippets"
         cls.raiz = ET.parse(cls.arquivo).getroot()
 
@@ -23,7 +23,7 @@ class TestSnippets(unittest.TestCase):
         self.assertTrue(self.arquivo.exists())
 
     def test_quantidade_bate_com_as_listas(self):
-        esperado = len(COMANDOS) + len(LETRAS_GREGAS) + 2 * len(AMBIENTES)
+        esperado = len(COMMANDS) + len(GREEK_LETTERS) + 2 * len(ENVIRONMENTS)
         self.assertEqual(len(self.raiz.findall("snippet")), esperado)
 
     def test_sem_atributo_version(self):

@@ -17,7 +17,7 @@ from gi.repository import Adw, Gio, GLib, GObject, Gtk, GtkSource
 from . import session
 from .appearance import install_css
 from .build import Builder, Diagnostic
-from .complete import FonteDeChaves, preparar_snippets
+from .complete import KeySource, prepare_snippets
 from .context import Library, Popup
 from .document import Document
 from .editor import Editor
@@ -103,11 +103,11 @@ class Janela(Adw.ApplicationWindow):
         # Comandos e ambientes vêm de um .snippets gerado em serifa/complete.py.
         gerente = GtkSource.SnippetManager.get_default()
         caminhos = list(gerente.get_search_path() or [])
-        pasta_snippets = str(preparar_snippets())
+        pasta_snippets = str(prepare_snippets())
         if pasta_snippets not in caminhos:
             gerente.set_search_path([pasta_snippets, *caminhos])
 
-        self._chaves = FonteDeChaves()
+        self._keys = KeySource()
         completacao = self._editor.get_completion()
         completacao.add_provider(GtkSource.CompletionSnippets.new())
 
@@ -118,7 +118,7 @@ class Janela(Adw.ApplicationWindow):
         # Chaves de .bib e \label num buffer à parte: é assim que o
         # CompletionWords enxerga palavras que não estão no texto aberto.
         citacoes = GtkSource.CompletionWords.new("Citações e rótulos")
-        citacoes.register(self._chaves.buffer)
+        citacoes.register(self._keys.buffer)
         completacao.add_provider(citacoes)
 
         completacao.set_property("select-on-show", True)
@@ -387,9 +387,9 @@ class Janela(Adw.ApplicationWindow):
 
         texto = self._documento.text
         self._popup.reset()
-        self._chaves.definir_pasta(caminho.parent)
+        self._keys.set_folder(caminho.parent)
         self._library.set_folder(caminho.parent)
-        self._chaves.atualizar(texto)
+        self._keys.update(texto)
         self._atualizar_titulo()
         self._reconstruir_sumario()
         self._atualizar_contagem()
@@ -425,7 +425,7 @@ class Janela(Adw.ApplicationWindow):
             return
         if arquivo is not None:
             self._documento.set_path(Path(arquivo.get_path()))
-            self._chaves.definir_pasta(self._arquivo.parent)
+            self._keys.set_folder(self._arquivo.parent)
             self._library.set_folder(self._arquivo.parent)
             self.salvar()
 
@@ -636,7 +636,7 @@ class Janela(Adw.ApplicationWindow):
         self._temporizador_sumario = 0
         self._reconstruir_sumario()
         self._atualizar_contagem()
-        self._chaves.atualizar(self._editor.text)
+        self._keys.update(self._editor.text)
         return GLib.SOURCE_REMOVE
 
     def _tarefa_compilacao(self) -> bool:

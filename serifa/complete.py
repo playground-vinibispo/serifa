@@ -1,25 +1,27 @@
-"""Completação.
+"""Completion.
 
-Uma nota sobre o caminho que *não* foi tomado. A forma elegante seria um
-GtkSourceCompletionProvider próprio, que enxerga o contexto à esquerda do
-cursor e decide se oferece comandos, ambientes, chaves de citação ou rótulos.
-Ela chegou a ficar pronta e a detecção de contexto funcionava -- até o popup
-aparecer: o par ``populate_async``/``populate_finish`` do GtkSourceView 5.14
-estoura em C logo depois de ``populate_finish`` devolver o modelo, sem frame
-Python no backtrace. É bug de binding, não de uso: o mesmo estouro acontece
-num provedor mínimo de três itens fixos, com ou sem referência viva para a
-GTask, devolvendo valor ou booleano.
+A note on the road *not* taken. The elegant way would be a
+GtkSourceCompletionProvider of our own, one that looks at the context left of
+the cursor and decides whether to offer commands, environments, citation keys
+or labels. It got as far as working, context detection included -- until the
+popup showed up: GtkSourceView 5.14's ``populate_async``/``populate_finish``
+pair crashes in C right after ``populate_finish`` returns the model, with no
+Python frame in the backtrace. It is a binding bug, not a usage one: the same
+crash happens with a minimal provider of three fixed items, with or without a
+live reference to the GTask, returning a value or a boolean.
 
-Então a completação é montada com as duas peças que o GtkSourceView já traz
-prontas, ambas em C:
+So completion is assembled from the two pieces GtkSourceView already ships,
+both in C:
 
-- ``GtkSourceCompletionSnippets``, alimentado por um .snippets gerado aqui a
-  partir das listas abaixo -- comandos e ambientes, com tab stops;
-- ``GtkSourceCompletionWords``, alimentado pelo próprio documento e por um
-  buffer invisível com as chaves dos .bib e os ``\\label`` do texto.
+- ``GtkSourceCompletionSnippets``, fed by a .snippets file generated here from
+  the lists below -- commands and environments, with tab stops;
+- ``GtkSourceCompletionWords``, fed by the document itself and by an invisible
+  buffer holding the .bib keys and the text's ``\\label``s.
 
-Perde-se a consciência de contexto: as chaves de citação aparecem em qualquer
-lugar, não só dentro de ``\\cite{``. Ganha-se não derrubar o editor.
+Context awareness is lost here: citation keys show up anywhere, not only
+inside ``\\cite{``. What is gained is not bringing the editor down. The four
+cases where context really matters got it back later, through a popup of our
+own -- see serifa/context.py.
 """
 
 from __future__ import annotations
@@ -35,8 +37,8 @@ gi.require_version("GtkSource", "5")
 
 from gi.repository import GLib, Gtk
 
-# (gatilho, texto do snippet). $1, $2 são tab stops; $0 é onde o cursor para.
-COMANDOS: list[tuple[str, str]] = [
+# (trigger, snippet text). $1, $2 are tab stops; $0 is where the cursor lands.
+COMMANDS: list[tuple[str, str]] = [
     ("documentclass", "\\documentclass[${1:12pt, a4paper}]{${2:article}}$0"),
     ("usepackage", "\\usepackage{$1}$0"),
     ("section", "\\section{$1}\n$0"),
@@ -98,14 +100,14 @@ COMANDOS: list[tuple[str, str]] = [
     ("Rightarrow", "\\Rightarrow$0"),
 ]
 
-LETRAS_GREGAS = [
+GREEK_LETTERS = [
     "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta",
     "iota", "kappa", "lambda", "mu", "nu", "xi", "pi", "rho", "sigma", "tau",
     "phi", "chi", "psi", "omega", "Gamma", "Delta", "Theta", "Lambda", "Xi",
     "Pi", "Sigma", "Phi", "Psi", "Omega",
 ]
 
-AMBIENTES = [
+ENVIRONMENTS = [
     "document", "abstract", "itemize", "enumerate", "description",
     "figure", "table", "tabular", "center", "flushleft", "flushright",
     "quote", "quotation", "verse", "verbatim", "equation", "equationx",
@@ -113,97 +115,99 @@ AMBIENTES = [
     "cases", "array", "minipage", "thebibliography",
 ]
 
-CHAVE_BIB = re.compile(r"@\w+\s*\{\s*([^,\s]+)", re.MULTILINE)
-ROTULO = re.compile(r"\\label\{([^}]+)\}")
+BIB_KEY = re.compile(r"@\w+\s*\{\s*([^,\s]+)", re.MULTILINE)
+LABEL = re.compile(r"\\label\{([^}]+)\}")
 
 
-def _snippet(gatilho: str, descricao: str, texto: str) -> str:
-    # O parser do GtkSourceView contraria o próprio snippets.rng em três
-    # pontos, todos descobertos na tentativa e erro: exige as formas com
-    # underscore (_group, _name, _description) e rejeita as sem; rejeita o
-    # atributo version, que o RNG declara obrigatório; e exige languages no
-    # <text>, que o RNG declara opcional. Mexer aqui sem testar quebra tudo
-    # de uma vez, em silêncio -- o erro é só um WARNING no console.
+def _snippet(trigger: str, description: str, text: str) -> str:
+    # GtkSourceView's parser contradicts its own snippets.rng in three places,
+    # all found by trial and error: it demands the underscore forms (_group,
+    # _name, _description) and rejects the plain ones; it rejects the version
+    # attribute, which the RNG declares required; and it demands languages on
+    # <text>, which the RNG declares optional. Touching this without testing
+    # breaks everything at once, silently -- the error is just a WARNING on
+    # the console.
     return (
-        f'  <snippet _name="{escape(gatilho)}" trigger="{escape(gatilho)}"\n'
-        f'           _description="{escape(descricao)}">\n'
-        f'    <text languages="latex;"><![CDATA[{texto}]]></text>\n'
+        f'  <snippet _name="{escape(trigger)}" trigger="{escape(trigger)}"\n'
+        f'           _description="{escape(description)}">\n'
+        f'    <text languages="latex;"><![CDATA[{text}]]></text>\n'
         f"  </snippet>\n"
     )
 
 
-def preparar_snippets() -> Path:
-    """Gera o .snippets a partir das listas acima e devolve a pasta.
+def prepare_snippets() -> Path:
+    """Generates the .snippets file from the lists above and returns its folder.
 
-    Gerado em tempo de execução de propósito: a lista Python fica sendo a
-    única fonte de verdade, e não há XML para esquecer de atualizar.
+    Generated at run time on purpose: the Python lists stay the single source
+    of truth, and there is no XML to forget to update.
     """
-    pasta = Path(GLib.get_user_cache_dir()) / "serifa" / "snippets"
-    pasta.mkdir(parents=True, exist_ok=True)
+    folder = Path(GLib.get_user_cache_dir()) / "serifa" / "snippets"
+    folder.mkdir(parents=True, exist_ok=True)
 
-    partes = [
+    parts = [
         '<?xml version="1.0" encoding="UTF-8"?>\n<snippets _group="LaTeX">\n'
     ]
-    for gatilho, texto in COMANDOS:
-        partes.append(_snippet(gatilho, texto.replace("$0", "").strip(), texto))
-    for letra in LETRAS_GREGAS:
-        partes.append(_snippet(letra, f"\\{letra}", f"\\{letra}$0"))
-    for ambiente in AMBIENTES:
-        # "equationx" é o gatilho de equation*: asterisco não vale como gatilho.
-        real = ambiente[:-1] + "*" if ambiente.endswith("x") else ambiente
-        corpo = f"\\begin{{{real}}}\n  $1\n\\end{{{real}}}$0"
-        partes.append(_snippet(ambiente, f"ambiente {real}", corpo))
-        partes.append(_snippet(f"beg{ambiente}", f"ambiente {real}", corpo))
-    partes.append("</snippets>\n")
+    for trigger, text in COMMANDS:
+        parts.append(_snippet(trigger, text.replace("$0", "").strip(), text))
+    for letter in GREEK_LETTERS:
+        parts.append(_snippet(letter, f"\\{letter}", f"\\{letter}$0"))
+    for environment in ENVIRONMENTS:
+        # "equationx" is the trigger for equation*: an asterisk is no good as
+        # a trigger.
+        real = environment[:-1] + "*" if environment.endswith("x") else environment
+        body = f"\\begin{{{real}}}\n  $1\n\\end{{{real}}}$0"
+        parts.append(_snippet(environment, f"ambiente {real}", body))
+        parts.append(_snippet(f"beg{environment}", f"ambiente {real}", body))
+    parts.append("</snippets>\n")
 
-    (pasta / "latex.snippets").write_text("".join(partes), encoding="utf-8")
-    return pasta
+    (folder / "latex.snippets").write_text("".join(parts), encoding="utf-8")
+    return folder
 
 
-class FonteDeChaves:
-    """Buffer invisível com as chaves dos .bib e os rótulos do documento.
+class KeySource:
+    """Invisible buffer with the .bib keys and the document's labels.
 
-    Alimenta o GtkSourceCompletionWords, que só completa palavras existentes
-    em algum buffer registrado nele.
+    Feeds GtkSourceCompletionWords, which only completes words that exist in
+    some buffer registered with it.
     """
 
     def __init__(self) -> None:
         self.buffer = Gtk.TextBuffer()
-        self._pasta: Path | None = None
-        self._chaves_bib: list[str] = []
+        self._folder: Path | None = None
+        self._bib_keys: list[str] = []
 
-    def definir_pasta(self, pasta: Path | None) -> None:
-        if pasta == self._pasta:
+    def set_folder(self, folder: Path | None) -> None:
+        if folder == self._folder:
             return
-        self._pasta = pasta
-        self._chaves_bib = self._ler_bibs(pasta) if pasta else []
+        self._folder = folder
+        self._bib_keys = self._read_bibs(folder) if folder else []
 
-    def atualizar(self, texto_do_documento: str) -> None:
-        rotulos = sorted(set(ROTULO.findall(texto_do_documento)))
-        self.buffer.set_text("\n".join([*self._chaves_bib, *rotulos]))
+    def update(self, document_text: str) -> None:
+        labels = sorted(set(LABEL.findall(document_text)))
+        self.buffer.set_text("\n".join([*self._bib_keys, *labels]))
 
     @property
-    def chaves(self) -> list[str]:
-        return list(self._chaves_bib)
+    def keys(self) -> list[str]:
+        return list(self._bib_keys)
 
     @staticmethod
-    def _ler_bibs(pasta: Path) -> list[str]:
-        encontradas: list[str] = []
-        vistas: set[str] = set()
-        # A pasta do arquivo e até três níveis acima: cobre o layout
-        # trabalho/ -> referencias.bib na raiz do repositório.
-        for diretorio in [pasta, *list(pasta.parents)[:3]]:
+    def _read_bibs(folder: Path) -> list[str]:
+        found: list[str] = []
+        seen: set[str] = set()
+        # The file's folder and up to three levels above: covers the
+        # assignment/ -> referencias.bib at the repository root layout.
+        for directory in [folder, *list(folder.parents)[:3]]:
             try:
-                arquivos = sorted(diretorio.glob("*.bib"))
+                files = sorted(directory.glob("*.bib"))
             except OSError:
                 continue
-            for arquivo in arquivos:
+            for file in files:
                 try:
-                    texto = arquivo.read_text(encoding="utf-8", errors="replace")
+                    text = file.read_text(encoding="utf-8", errors="replace")
                 except OSError:
                     continue
-                for chave in CHAVE_BIB.findall(texto):
-                    if chave not in vistas:
-                        vistas.add(chave)
-                        encontradas.append(chave)
-        return encontradas
+                for key in BIB_KEY.findall(text):
+                    if key not in seen:
+                        seen.add(key)
+                        found.append(key)
+        return found
