@@ -11,6 +11,11 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
 # próprio: nada aparece na tela nem rouba o foco de quem está trabalhando.
 # Tirar o WAYLAND_DISPLAY não bastaria: sem ele a libwayland cai no wayland-0,
 # que é a sessão do usuário. Sem mutter (a CI usa xvfb-run), roda direto.
+#
+# ADW_DISABLE_PORTAL: no barramento novo, o xdg-desktop-portal sobe sob demanda
+# e trava esperando o serviço de segredos, e o Adw.init() espera o portal até
+# o timeout do D-Bus -- 25 s de 55 s de suíte. De brinde, o tema fica sempre o
+# padrão, sem o modo escuro da sessão vazar para os testes.
 if [ "$1" = "--na-tela" ]; then
     shift
 elif [ -z "$SERIFA_ISOLADO" ] && command -v mutter >/dev/null; then
@@ -18,6 +23,7 @@ elif [ -z "$SERIFA_ISOLADO" ] && command -v mutter >/dev/null; then
     exec dbus-run-session -- mutter --headless --no-x11 \
         --virtual-monitor 1280x800 --wayland-display="$SOQUETE" -- \
         env -u DISPLAY WAYLAND_DISPLAY="$SOQUETE" SERIFA_ISOLADO=1 \
+        ADW_DISABLE_PORTAL=1 GTK_A11Y=none \
         "$0" "$@" 2> >(grep -vE '^(libmutter|\(mutter|mutter|Gdk-Message|A connection to the bus)' >&2)
 fi
 
