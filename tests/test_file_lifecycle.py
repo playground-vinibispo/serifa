@@ -50,7 +50,7 @@ class TestSaving(GraphicalCase):
         self.assertTrue(until(lambda: (shadow / "previa.tex").exists(), 4000))
         # no build leftovers in the user's folder
         self.assertEqual(sorted(p.name for p in self.folder.iterdir()),
-                         ["estado.json", "texto.tex"])
+                         ["state.json", "texto.tex"])
 
     def test_save_writes_and_clears_dirty(self):
         self.type_text("mexido ")

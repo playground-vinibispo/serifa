@@ -782,13 +782,11 @@ class Window(Adw.ApplicationWindow):
     # -------------------------------------------------------- persistence
 
     def _save_state(self) -> None:
-        # The keys stay in Portuguese: this file already exists on disk, and
-        # renaming them would make Serifa forget the session once.
         session.write(STATE, {
-            "arquivo": str(self._file) if self._file else None,
+            "file": str(self._file) if self._file else None,
             "vim": self._vim_button.get_active(),
-            "continua": self._continuous_build,
-            "divisor": self._split.get_position(),
+            "continuous": self._continuous_build,
+            "split": self._split.get_position(),
         })
 
     def _restore_state(self) -> None:
@@ -797,10 +795,10 @@ class Window(Adw.ApplicationWindow):
             return
         if data.get("vim"):
             self._vim_button.set_active(True)
-        self._continuous_build = data.get("continua", True)
-        if position := data.get("divisor"):
+        self._continuous_build = data.get("continuous", True)
+        if position := data.get("split"):
             self._split.set_position(position)
-        if (path := data.get("arquivo")) and Path(path).exists():
+        if (path := data.get("file")) and Path(path).exists():
             # Only restores if nothing was opened in the meantime: the command
             # line (do_open) arrives before this idle, and without the guard
             # the previous session overwrote the file that was asked for.

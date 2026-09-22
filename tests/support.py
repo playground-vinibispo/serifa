@@ -96,7 +96,7 @@ class GraphicalCase(unittest.TestCase):
         import serifa.window as window_module
 
         self._original_state = window_module.STATE
-        window_module.STATE = self.folder / "estado.json"
+        window_module.STATE = self.folder / "state.json"
 
         from serifa.window import Window
 

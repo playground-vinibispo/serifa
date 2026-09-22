@@ -13,7 +13,7 @@ from pathlib import Path
 
 from gi.repository import GLib
 
-DEFAULT = Path(GLib.get_user_config_dir()) / "serifa" / "estado.json"
+DEFAULT = Path(GLib.get_user_config_dir()) / "serifa" / "state.json"
 
 
 def read(path: Path) -> dict:
