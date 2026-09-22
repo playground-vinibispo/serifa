@@ -167,7 +167,11 @@ aplicação, montar a janela, chamar `present()` e bombear o laço principal à
 mão (`testes/apoio.py`). Nada toca em arquivo seu — cada caso ganha uma pasta
 temporária, e o estado de sessão é desviado para lá.
 
-Os testes gráficos se pulam sozinhos quando não há servidor gráfico.
+Quando há `mutter` instalado, o `bin/testes` abre as janelas num mutter
+headless próprio, com D-Bus próprio: nada aparece na sua tela nem rouba o foco
+enquanto a suíte roda. `bin/testes --na-tela` roda na sessão atual, para ver.
+Na CI, sem mutter, quem dá o servidor gráfico é o `xvfb-run`. Os testes
+gráficos se pulam sozinhos quando não há servidor gráfico nenhum.
 
 Vale dizer o que cada grupo guarda, porque quase todos nasceram de um bug que
 já aconteceu:

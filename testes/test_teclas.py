@@ -12,7 +12,7 @@ gi.require_version("Gdk", "4.0")
 gi.require_version("Gtk", "4.0")
 from gi.repository import Gdk, Gtk
 
-from testes.apoio import CasoGrafico, bombear
+from testes.apoio import CasoGrafico, ate, bombear
 
 
 class TestTextObjects(CasoGrafico):
@@ -20,7 +20,9 @@ class TestTextObjects(CasoGrafico):
         super().setUp()
         self.janela._botao_vim.set_active(True)
         self.editor.grab_focus()
-        bombear(300)
+        # Esperar a condição, não um tempo fixo: o foco assenta em ritmo
+        # diferente conforme o compositor.
+        self.assertTrue(ate(self.editor.is_focus, 3000), "o editor não ganhou o foco")
 
     def preparar(self, texto, marca):
         self.buffer.set_text(texto)
@@ -83,7 +85,7 @@ class TestFocoDaJanela(CasoGrafico):
     def test_sem_foco_no_editor_a_janela_nao_trata(self):
         self.janela._botao_vim.set_active(True)
         self.janela._campo_busca.grab_focus()
-        bombear(200)
+        ate(lambda: not self.editor.is_focus(), 2000)
         keyval = Gdk.unicode_to_keyval(ord("v"))
         self.assertFalse(self.janela._ao_teclar(None, keyval, 0, Gdk.ModifierType(0)))
 

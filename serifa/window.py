@@ -69,7 +69,10 @@ class Janela(Adw.ApplicationWindow):
         self.add_controller(teclas)
 
     def _ao_teclar(self, _controlador, keyval: int, _codigo: int, estado) -> bool:
-        if not self._editor.has_focus():
+        # is_focus, não has_focus: a tecla só chega aqui com a janela ativa,
+        # então basta saber se o editor é o foco dela. has_focus exige também
+        # a janela ativa, o que num compositor sem teclado (testes) nunca vale.
+        if not self._editor.is_focus():
             return False
         if self._popup.tratar_tecla(keyval, estado):
             return True
