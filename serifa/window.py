@@ -334,9 +334,9 @@ class Janela(Adw.ApplicationWindow):
             "vim": (self._alternar_vim, "<Control><Alt>v"),
             "preview": (self._alternar_preview, "<Control><Shift>v"),
             "sumario": (self._alternar_sumario, "F9"),
-            "zoom-mais": (lambda: self._preview.aplicar_zoom(1.15), "<Control>plus"),
-            "zoom-menos": (lambda: self._preview.aplicar_zoom(0.87), "<Control>minus"),
-            "zoom-largura": (self._preview.ajustar_a_largura, "<Control>0"),
+            "zoom-mais": (lambda: self._preview.apply_zoom(1.15), "<Control>plus"),
+            "zoom-menos": (lambda: self._preview.apply_zoom(0.87), "<Control>minus"),
+            "zoom-largura": (self._preview.fit_width, "<Control>0"),
             "conferir": (self.conferir, "<Control><Shift>c"),
             "continua": (self._alternar_continua, None),
         }
@@ -396,7 +396,7 @@ class Janela(Adw.ApplicationWindow):
 
         pdf = Builder._pdf_for(caminho, caminho.parent)
         if pdf.exists():
-            self._preview.carregar(pdf)
+            self._preview.load(pdf)
         # O Gtk.FileDialog é modal e leva o foco embora; sem devolvê-lo aqui,
         # as teclas seguintes podem não chegar ao contexto do vim.
         self._editor.grab_focus()
@@ -485,12 +485,12 @@ class Janela(Adw.ApplicationWindow):
         self._diagnosticos = list(diagnosticos)
 
         if pdf:
-            self._preview.carregar(pdf)
+            self._preview.load(pdf)
 
         erros = sum(1 for d in self._diagnosticos if d.severity == "error")
         avisos = len(self._diagnosticos) - erros
         if sucesso:
-            paginas = self._preview.paginas
+            paginas = self._preview.pages
             plural = "s" if paginas != 1 else ""
             resumo = f"{'prévia' if previa else 'ok'} · {paginas} página{plural}"
             if avisos:
