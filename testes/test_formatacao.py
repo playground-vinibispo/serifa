@@ -77,16 +77,16 @@ class TestCompletacaoPorContexto(CasoGrafico):
 
     def test_cite_oferece_as_chaves_do_bib(self):
         self.digitar_no_fim("\\cite{")
-        self.assertTrue(self.janela._popup.visivel)
-        self.assertIn("einstein_infeld", [i.texto for i in self.janela._popup._itens])
+        self.assertTrue(self.janela._popup.visible)
+        self.assertIn("einstein_infeld", [i.text for i in self.janela._popup._items])
 
     def test_ref_oferece_os_rotulos_do_documento(self):
         self.digitar_no_fim("\\ref{")
-        self.assertEqual([i.texto for i in self.janela._popup._itens], ["sec:um"])
+        self.assertEqual([i.text for i in self.janela._popup._items], ["sec:um"])
 
     def test_prosa_nao_abre_o_balao(self):
         self.digitar_no_fim("texto comum ")
-        self.assertFalse(self.janela._popup.visivel)
+        self.assertFalse(self.janela._popup.visible)
 
     def test_andar_com_o_cursor_nao_abre_o_balao(self):
         # O bug do preambulo.tex: passar por cima de um \begin{...} já
@@ -96,15 +96,15 @@ class TestCompletacaoPorContexto(CasoGrafico):
         bombear(200)
         self.buffer.place_cursor(self.buffer.get_iter_at_offset(9))
         bombear(250)
-        self.assertFalse(self.janela._popup.visivel)
+        self.assertFalse(self.janela._popup.visible)
 
     def test_aceitar_insere_e_pula_o_fechamento(self):
         self.digitar_no_fim("\\cite{eif")
-        self.assertTrue(self.janela._popup.visivel)
-        self.janela._popup._aceitar(0)
+        self.assertTrue(self.janela._popup.visible)
+        self.janela._popup._accept(0)
         bombear(150)
         self.assertIn("\\cite{einstein_infeld}", self.texto)
-        self.assertFalse(self.janela._popup.visivel)
+        self.assertFalse(self.janela._popup.visible)
 
 
 if __name__ == "__main__":

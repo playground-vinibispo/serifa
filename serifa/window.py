@@ -18,7 +18,7 @@ from . import session
 from .appearance import install_css
 from .build import Builder, Diagnostic
 from .complete import FonteDeChaves, preparar_snippets
-from .contexto import Acervo, Popup
+from .context import Library, Popup
 from .document import Document
 from .editor import Editor
 from .formatting import FORMATS, SHORTCUTS, wrap
@@ -74,7 +74,7 @@ class Janela(Adw.ApplicationWindow):
         # a janela ativa, o que num compositor sem teclado (testes) nunca vale.
         if not self._editor.is_focus():
             return False
-        if self._popup.tratar_tecla(keyval, estado):
+        if self._popup.handle_key(keyval, estado):
             return True
         return self._editor.handle_key(keyval, estado)
 
@@ -124,9 +124,9 @@ class Janela(Adw.ApplicationWindow):
         completacao.set_property("select-on-show", True)
 
         # Dentro de \cite{, \ref{, \begin{ e \input{ quem responde é um
-        # popup próprio: ver o cabeçalho de serifa/contexto.py para o motivo.
-        self._acervo = Acervo()
-        self._popup = Popup(self._editor, self._acervo)
+        # popup próprio: ver o cabeçalho de serifa/context.py para o motivo.
+        self._library = Library()
+        self._popup = Popup(self._editor, self._library)
 
         rolagem = Gtk.ScrolledWindow()
         rolagem.set_child(self._editor)
@@ -386,9 +386,9 @@ class Janela(Adw.ApplicationWindow):
             return
 
         texto = self._documento.text
-        self._popup.reiniciar()
+        self._popup.reset()
         self._chaves.definir_pasta(caminho.parent)
-        self._acervo.definir_pasta(caminho.parent)
+        self._library.set_folder(caminho.parent)
         self._chaves.atualizar(texto)
         self._atualizar_titulo()
         self._reconstruir_sumario()
@@ -426,7 +426,7 @@ class Janela(Adw.ApplicationWindow):
         if arquivo is not None:
             self._documento.set_path(Path(arquivo.get_path()))
             self._chaves.definir_pasta(self._arquivo.parent)
-            self._acervo.definir_pasta(self._arquivo.parent)
+            self._library.set_folder(self._arquivo.parent)
             self.salvar()
 
     # ------------------------------------------------- arquivo mexido fora

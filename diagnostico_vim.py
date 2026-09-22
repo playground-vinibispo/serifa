@@ -74,7 +74,7 @@ def montar_janela_completa(app):
             return False
         print(
             f"tecla {nome:<12} "
-            f"balão={'aberto' if janela._popup.visivel else 'fechado':<7} "
+            f"balão={'aberto' if janela._popup.visible else 'fechado':<7} "
             f"seleção={bool(editor.buffer.get_selection_bounds())} "
             f"completacao_nativa="
             f"{editor.get_completion().get_property('view') is not None}",
