@@ -76,7 +76,7 @@ class Janela(Adw.ApplicationWindow):
             return False
         if self._popup.tratar_tecla(keyval, estado):
             return True
-        return self._editor.tratar_tecla(keyval, estado)
+        return self._editor.handle_key(keyval, estado)
 
     @property
     def _arquivo(self) -> Path | None:
@@ -98,7 +98,7 @@ class Janela(Adw.ApplicationWindow):
         self._documento.connect("conflict", self._ao_conflito)
         self._documento.connect("failed", lambda _d, m: self._avisar(m))
         self._editor.buffer.connect("changed", self._ao_mudar_texto)
-        self._editor.connect("cursor-movido", self._ao_mover_cursor)
+        self._editor.connect("cursor-moved", self._ao_mover_cursor)
 
         # Comandos e ambientes vêm de um .snippets gerado em serifa/complete.py.
         gerente = GtkSource.SnippetManager.get_default()
@@ -469,7 +469,7 @@ class Janela(Adw.ApplicationWindow):
         """A contínua: compila o buffer sem encostar no arquivo do usuário."""
         if self._arquivo is None:
             return
-        self._compilador.build_preview(self._editor.texto, self._arquivo)
+        self._compilador.build_preview(self._editor.text, self._arquivo)
 
     def _gravar(self) -> bool:
         return self._documento.save()
@@ -520,7 +520,7 @@ class Janela(Adw.ApplicationWindow):
     def _ao_clicar_diagnostico(self, _lista, linha) -> None:
         diagnostico = getattr(linha, "diagnostico", None)
         if diagnostico and diagnostico.line:
-            self._editor.ir_para_linha(diagnostico.line)
+            self._editor.go_to_line(diagnostico.line)
 
     # ------------------------------------------------------------ formatação
 
@@ -573,7 +573,7 @@ class Janela(Adw.ApplicationWindow):
         while (linha := self._sumario.get_first_child()) is not None:
             self._sumario.remove(linha)
 
-        texto = self._editor.texto
+        texto = self._editor.text
         for casamento in SECAO.finditer(texto):
             comando, titulo = casamento.group(1), casamento.group(2)
             numero = texto.count("\n", 0, casamento.start()) + 1
@@ -595,7 +595,7 @@ class Janela(Adw.ApplicationWindow):
     def _ao_clicar_sumario(self, _lista, linha) -> None:
         numero = getattr(linha, "numero_da_linha", None)
         if numero:
-            self._editor.ir_para_linha(numero)
+            self._editor.go_to_line(numero)
 
     # ------------------------------------------------------------- busca
 
@@ -636,7 +636,7 @@ class Janela(Adw.ApplicationWindow):
         self._temporizador_sumario = 0
         self._reconstruir_sumario()
         self._atualizar_contagem()
-        self._chaves.atualizar(self._editor.texto)
+        self._chaves.atualizar(self._editor.text)
         return GLib.SOURCE_REMOVE
 
     def _tarefa_compilacao(self) -> bool:
@@ -648,7 +648,7 @@ class Janela(Adw.ApplicationWindow):
         self._estado_posicao.set_label(f"{linha}:{coluna}")
 
     def _atualizar_contagem(self) -> None:
-        total = self._editor.contar_palavras()
+        total = self._editor.count_words()
         self._estado_palavras.set_label(f"{total} palavras")
 
     def _atualizar_titulo(self) -> None:
@@ -665,7 +665,7 @@ class Janela(Adw.ApplicationWindow):
     # ------------------------------------------------------------- toggles
 
     def _ao_alternar_vim(self, botao: Gtk.ToggleButton) -> None:
-        vim = self._editor.alternar_vim(botao.get_active())
+        vim = self._editor.toggle_vim(botao.get_active())
         if vim is not None:
             # O VimIMContext não expõe o modo atual em lugar nenhum: só tem
             # command-bar-text (que traz "-- INSERT --", ":w", "/busca") e

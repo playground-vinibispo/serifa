@@ -81,46 +81,46 @@ class TestEditor(unittest.TestCase):
     def test_contagem_ignora_comando_e_chave(self):
         # "duas palavras" é o que se lê; \textbf e as chaves não contam.
         self.buffer.set_text("\\textbf{duas} palavras")
-        self.assertEqual(self.ed.contar_palavras(), 2)
+        self.assertEqual(self.ed.count_words(), 2)
 
     def test_contagem_ignora_comentario(self):
         self.buffer.set_text("prosa de verdade\n% comentario que nao conta\n")
-        self.assertEqual(self.ed.contar_palavras(), 3)
+        self.assertEqual(self.ed.count_words(), 3)
 
     def test_contagem_ignora_matematica_inline(self):
         self.buffer.set_text("antes $x^2 + y^2$ depois")
-        self.assertEqual(self.ed.contar_palavras(), 2)
+        self.assertEqual(self.ed.count_words(), 2)
 
     # ---------------------------------------------------------------- vim
 
     def test_vim_liga_e_desliga(self):
-        self.assertFalse(self.ed.vim_ativo)
-        self.ed.alternar_vim(True)
-        self.assertTrue(self.ed.vim_ativo)
-        self.ed.alternar_vim(False)
-        self.assertFalse(self.ed.vim_ativo)
+        self.assertFalse(self.ed.vim_active)
+        self.ed.toggle_vim(True)
+        self.assertTrue(self.ed.vim_active)
+        self.ed.toggle_vim(False)
+        self.assertFalse(self.ed.vim_active)
 
     def test_vim_usa_overwrite_para_o_cursor_em_bloco(self):
         # É o que faz uma tecla vazada sobrescrever em vez de inserir. Se
         # isto mudar, o diagnóstico daquele bug muda junto.
-        self.ed.alternar_vim(True)
+        self.ed.toggle_vim(True)
         self.assertTrue(self.ed.get_overwrite())
-        self.ed.alternar_vim(False)
+        self.ed.toggle_vim(False)
         self.assertFalse(self.ed.get_overwrite())
 
     def test_tratar_tecla_e_inerte_com_vim_desligado(self):
         keyval = Gdk.unicode_to_keyval(ord("v"))
-        self.assertFalse(self.ed.tratar_tecla(keyval, Gdk.ModifierType(0)))
+        self.assertFalse(self.ed.handle_key(keyval, Gdk.ModifierType(0)))
 
     def test_v_em_modo_de_insercao_nao_arma_a_sequencia(self):
         # A guarda é comparar a contagem de caracteres antes e depois: se o
         # texto mudou, aquele "v" era a letra v.
-        self.ed.alternar_vim(True)
+        self.ed.toggle_vim(True)
         self.buffer.set_text("abc")
         self.buffer.place_cursor(self.buffer.get_end_iter())
-        self.ed.tratar_tecla(Gdk.unicode_to_keyval(ord("v")), Gdk.ModifierType(0))
+        self.ed.handle_key(Gdk.unicode_to_keyval(ord("v")), Gdk.ModifierType(0))
         self.buffer.insert_at_cursor("v")
-        consumiu = self.ed.tratar_tecla(Gdk.unicode_to_keyval(ord("i")),
+        consumiu = self.ed.handle_key(Gdk.unicode_to_keyval(ord("i")),
                                         Gdk.ModifierType(0))
         self.assertFalse(consumiu)
 

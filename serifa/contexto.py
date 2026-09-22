@@ -313,7 +313,7 @@ class Popup:
             self.fechar()
             return GLib.SOURCE_REMOVE
 
-        self._itens = self._acervo.itens(self._contexto, self._editor.texto)
+        self._itens = self._acervo.itens(self._contexto, self._editor.text)
         if not self._itens:
             self.fechar()
             return GLib.SOURCE_REMOVE

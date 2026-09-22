@@ -1,14 +1,13 @@
-"""O editor propriamente dito.
+"""The editor itself.
 
-Um GtkSource.View configurado para LaTeX. O que há de menos óbvio aqui:
+A GtkSource.View set up for LaTeX. The less obvious parts:
 
-- o modo vim é o GtkSourceVimIMContext, que é a mesma emulação que o GNOME
-  Builder usa -- escrita em C, não reimplementada em Python. Ligar e desligar é
-  só adicionar ou remover um EventController;
-- os pares automáticos vivem no sinal ``insert-text`` do buffer, e não num
-  controlador de teclado. Isso é o que os faz conviver com o vim: em modo
-  normal, teclar ``{`` é um movimento e não insere texto, então o sinal
-  simplesmente não dispara.
+- vim mode is GtkSourceVimIMContext, the same emulation GNOME Builder uses --
+  written in C, not reimplemented in Python. Turning it on and off is just
+  adding or removing an EventController;
+- auto-pairing lives in the buffer's ``insert-text`` signal, not in a key
+  controller. That is what lets it coexist with vim: in normal mode, typing
+  ``{`` is a motion and inserts no text, so the signal simply never fires.
 """
 
 from __future__ import annotations
@@ -30,19 +29,19 @@ from .blocks import target
 try:
     gi.require_version("Spelling", "1")
     from gi.repository import Spelling
-except (ValueError, ImportError):  # pragma: no cover - depende do sistema
+except (ValueError, ImportError):  # pragma: no cover - depends on the system
     Spelling = None
 
-FECHAMENTO = {"{": "}", "[": "]", "(": ")", "$": "$"}
-# Digitar o fechamento que já está sob o cursor deve passar por cima dele, não
-# inserir um segundo. Sem isto, quem digita "\begin{align}" inteiro -- o que é
-# o natural -- termina com "}}".
-PASSAVEIS = {"}", "]", ")", "$"}
+CLOSERS = {"{": "}", "[": "]", "(": ")", "$": "$"}
+# Typing the closer that is already under the cursor should step over it, not
+# insert a second one. Without this, whoever types "\begin{align}" in full --
+# which is the natural thing -- ends up with "}}".
+SKIPPABLE = {"}", "]", ")", "$"}
 
-# Teclas que não são "uma tecla" para efeito de sequência: chegam sozinhas no
-# meio de qualquer combinação. O caso que interessa é o Shift, sem o qual não
-# se digita "{" -- ele aparece entre o "i" e o "{" de um vi{.
-MODIFICADORES = {
+# Keys that are not "a key" as far as a sequence goes: they arrive on their own
+# in the middle of any combination. The one that matters is Shift, without
+# which there is no "{" -- it shows up between the "i" and the "{" of a vi{.
+MODIFIERS = {
     Gdk.KEY_Shift_L, Gdk.KEY_Shift_R, Gdk.KEY_Control_L, Gdk.KEY_Control_R,
     Gdk.KEY_Alt_L, Gdk.KEY_Alt_R, Gdk.KEY_Super_L, Gdk.KEY_Super_R,
     Gdk.KEY_Meta_L, Gdk.KEY_Meta_R, Gdk.KEY_Caps_Lock, Gdk.KEY_Shift_Lock,
@@ -50,18 +49,18 @@ MODIFICADORES = {
     Gdk.KEY_ISO_Level3_Shift, Gdk.KEY_ISO_Level5_Shift,
 }
 
-# \begin{ambiente} seguido só de espaço até o fim da linha.
-ABERTURA_DE_AMBIENTE = re.compile(r"\\begin\{([A-Za-z@*]+)\}[^\n]*$")
+# \begin{environment} followed by nothing but the rest of the line.
+ENVIRONMENT_OPENING = re.compile(r"\\begin\{([A-Za-z@*]+)\}[^\n]*$")
 
 
 class Editor(GtkSource.View):
-    """A área de texto, com o buffer e os comportamentos de edição."""
+    """The text area, with its buffer and editing behaviours."""
 
     __gtype_name__ = "SerifaEditor"
 
     __gsignals__ = {
-        # Emitido quando o cursor muda de posição, para a barra de estado.
-        "cursor-movido": (GObject.SignalFlags.RUN_FIRST, None, (int, int)),
+        # Emitted when the cursor moves, for the status bar.
+        "cursor-moved": (GObject.SignalFlags.RUN_FIRST, None, (int, int)),
     }
 
     def __init__(self) -> None:
@@ -70,13 +69,13 @@ class Editor(GtkSource.View):
         self.buffer = GtkSource.Buffer()
         self.set_buffer(self.buffer)
 
-        idioma = GtkSource.LanguageManager.get_default().get_language("latex")
-        if idioma is not None:
-            self.buffer.set_language(idioma)
+        language = GtkSource.LanguageManager.get_default().get_language("latex")
+        if language is not None:
+            self.buffer.set_language(language)
         self.buffer.set_highlight_matching_brackets(True)
 
-        # Nada de número de linha, régua de 80 colunas ou realce da linha
-        # atual: são instrumentos de código. Ver serifa/aparencia.py.
+        # No line numbers, no 80-column ruler, no current-line highlight:
+        # those are tools for code. See serifa/appearance.py.
         self.set_show_line_numbers(False)
         self.set_highlight_current_line(False)
         self.set_show_right_margin(False)
@@ -89,93 +88,95 @@ class Editor(GtkSource.View):
         self.set_smart_home_end(GtkSource.SmartHomeEndType.BEFORE)
         self.set_wrap_mode(Gtk.WrapMode.WORD)
         self.set_top_margin(28)
-        self.set_bottom_margin(240)  # deixa a última linha subir até o meio da tela
+        self.set_bottom_margin(240)  # lets the last line rise to mid-screen
         self.set_pixels_above_lines(LEADING // 2)
         self.set_pixels_below_lines(LEADING // 2)
         self.set_pixels_inside_wrap(LEADING // 2)
         self.add_css_class("serifa-editor")
-        self._margem_atual = -1
+        self._current_margin = -1
 
         self._vim: GtkSource.VimIMContext | None = None
-        self._controlador_vim: Gtk.EventControllerKey | None = None
-        self._vinculo_foco = 0
-        self._sequencia: list[str] = []   # teclas desde o último "v"
-        self._tamanho_no_v = 0
-        self._pares_automaticos = True
-        self._inserindo = False  # trava de reentrância do insert-text
+        self._vim_controller: Gtk.EventControllerKey | None = None
+        self._focus_handler = 0
+        self._sequence: list[str] = []   # keys since the last "v"
+        self._length_at_v = 0
+        self._auto_pairs = True
+        self._inserting = False  # re-entrancy guard for insert-text
 
-        # connect_after: no "depois" do insert-text o texto já entrou e o
-        # iterador aponta logo após ele, o que dispensa adiar com idle_add.
-        # Adiar era o bug: se o buffer fosse trocado nesse meio-tempo, a
-        # marca guardada apontava para outro documento.
-        self.buffer.connect("insert-text", self._antes_de_inserir)
-        self.buffer.connect_after("insert-text", self._depois_de_inserir)
-        self.buffer.connect("notify::cursor-position", self._ao_mover_cursor)
+        # connect_after: in the "after" of insert-text the text is already in
+        # and the iterator points right past it, so there is no need to defer
+        # with idle_add. Deferring was the bug: if the buffer was swapped in
+        # the meantime, the saved mark pointed into another document.
+        self.buffer.connect("insert-text", self._before_insert)
+        self.buffer.connect_after("insert-text", self._after_insert)
+        self.buffer.connect("notify::cursor-position", self._on_cursor_moved)
 
-        self._adaptador_ortografico = None
-        self._preparar_ortografia()
+        self._spelling_adapter = None
+        self._setup_spelling()
 
-    def do_size_allocate(self, largura: int, altura: int, linha_base: int) -> None:
-        """Centra a coluna de texto na largura disponível.
+    def do_size_allocate(self, width: int, height: int, baseline: int) -> None:
+        """Centres the text column in the available width.
 
-        No GTK4 não existe sinal de realocação para widget: "notify::width"
-        não existe e conectar nele não faz nada. A forma é esta vfunc. A
-        margem só é escrita quando muda, porque mexer em margem dispara nova
-        alocação e reescrever o mesmo número a cada passagem é um laço.
+        GTK4 has no reallocation signal for widgets: "notify::width" does not
+        exist and connecting to it does nothing. This vfunc is the way. The
+        margin is only written when it changes, because touching a margin
+        triggers a new allocation, and rewriting the same number on every pass
+        is a loop.
         """
-        if largura > 0:
-            margem = margin_for(largura, character_width(self))
-            if margem != self._margem_atual:
-                self._margem_atual = margem
-                self.set_left_margin(margem)
-                self.set_right_margin(margem)
-        GtkSource.View.do_size_allocate(self, largura, altura, linha_base)
+        if width > 0:
+            margin = margin_for(width, character_width(self))
+            if margin != self._current_margin:
+                self._current_margin = margin
+                self.set_left_margin(margin)
+                self.set_right_margin(margin)
+        GtkSource.View.do_size_allocate(self, width, height, baseline)
 
     # ------------------------------------------------------------------ vim
 
     @property
-    def vim_ativo(self) -> bool:
+    def vim_active(self) -> bool:
         return self._vim is not None
 
-    def alternar_vim(self, ativo: bool) -> GtkSource.VimIMContext | None:
-        """Liga ou desliga o modo vim. Devolve o contexto, quando ligado."""
-        if ativo and self._vim is None:
+    def toggle_vim(self, active: bool) -> GtkSource.VimIMContext | None:
+        """Turns vim mode on or off. Returns the context when on."""
+        if active and self._vim is None:
             vim = GtkSource.VimIMContext()
-            controlador = Gtk.EventControllerKey()
-            controlador.set_im_context(vim)
-            # CAPTURE: o vim precisa ver a tecla antes do GtkTextView.
-            controlador.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
-            self.add_controller(controlador)
+            controller = Gtk.EventControllerKey()
+            controller.set_im_context(vim)
+            # CAPTURE: vim has to see the key before GtkTextView does.
+            controller.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+            self.add_controller(controller)
             vim.set_client_widget(self)
 
-            # O GtkEventControllerKey só avisa focus_in ao contexto de entrada
-            # quando o widget GANHA foco depois de o controlador existir. Ligar
-            # o vim por Ctrl+Alt+V não troca o foco de lugar -- o editor já
-            # estava focado --, então sem este empurrão o contexto nunca é
-            # ativado e não filtra tecla nenhuma. E como o vim já pôs o
-            # TextView em overwrite para desenhar o cursor em bloco do modo
-            # normal, cada tecla que vaza não insere: sobrescreve. É o "modo
-            # replace" que aparece do nada.
+            # GtkEventControllerKey only tells the input context focus_in
+            # when the widget GAINS focus after the controller exists.
+            # Turning vim on with Ctrl+Alt+V does not move focus -- the editor
+            # was already focused --, so without this nudge the context is
+            # never activated and filters no key at all. And since vim has
+            # already put the TextView in overwrite to draw normal mode's block
+            # cursor, every key that leaks through does not insert: it
+            # overwrites. That is the "replace mode" that shows up out of
+            # nowhere.
             if self.has_focus():
                 vim.focus_in()
 
             self._vim = vim
-            self._controlador_vim = controlador
-            self._vinculo_foco = self.connect(
-                "notify::has-focus", self._ao_mudar_foco
+            self._vim_controller = controller
+            self._focus_handler = self.connect(
+                "notify::has-focus", self._on_focus_changed
             )
-        elif not ativo and self._vim is not None:
+        elif not active and self._vim is not None:
             self._vim.focus_out()
-            self.disconnect(self._vinculo_foco)
-            self._vinculo_foco = 0
-            self._sequencia.clear()
-            self.remove_controller(self._controlador_vim)
+            self.disconnect(self._focus_handler)
+            self._focus_handler = 0
+            self._sequence.clear()
+            self.remove_controller(self._vim_controller)
             self._vim = None
-            self._controlador_vim = None
+            self._vim_controller = None
         return self._vim
 
-    def _ao_mudar_foco(self, *_args) -> None:
-        """Mantém o contexto do vim em dia com o foco, nos dois sentidos."""
+    def _on_focus_changed(self, *_args) -> None:
+        """Keeps the vim context in step with focus, both ways."""
         if self._vim is None:
             return
         if self.has_focus():
@@ -183,246 +184,248 @@ class Editor(GtkSource.View):
         else:
             self._vim.focus_out()
 
-    # ------------------------------------------- text objects no modo visual
+    # ------------------------------------------- text objects in visual mode
 
-    def tratar_tecla(self, keyval: int, estado) -> bool:
-        """Faz `vi{`, `va(`, `i"` e afins funcionarem no modo visual.
+    def handle_key(self, keyval: int, state) -> bool:
+        """Makes `vi{`, `va(`, `i"` and friends work in visual mode.
 
-        O modo visual do GtkSourceView não tem text objects: a biblioteca traz
-        gtk_source_vim_command_set_text_object e a versão para insert, mas o
-        estado visual só expõe clone, get_bounds, ignore_command, new e warp.
-        Daí `ci{` funcionar e `vi{` não -- ali o `i` é ignorado e o `{` vira o
-        movimento "parágrafo anterior", que só pula o cursor.
+        GtkSourceView's visual mode has no text objects: the library ships
+        gtk_source_vim_command_set_text_object and the insert variant, but the
+        visual state only exposes clone, get_bounds, ignore_command, new and
+        warp. Hence `ci{` works and `vi{` does not -- there the `i` is ignored
+        and the `{` becomes the "previous paragraph" motion, which only moves
+        the cursor.
 
-        Aqui a sequência v -> i|a -> sinal é reconhecida e a seleção é feita à
-        mão. O `v` segue para o vim, que entra em modo visual de verdade; o
-        `i` e o sinal são consumidos, senão o vim os interpretaria como
-        movimento.
+        Here the sequence v -> i|a -> sign is recognised and the selection is
+        made by hand. The `v` goes on to vim, which enters visual mode for
+        real; the `i` and the sign are consumed, or vim would read them as
+        motions.
 
-        Chamado pelo controlador que a janela instala em si mesma, e não por um
-        conectado ao controlador do vim. A diferença é decisiva: o
-        GtkEventControllerKey entrega a tecla ao contexto de entrada ANTES de
-        emitir key-pressed, e se o contexto filtrar -- que é o que o vim faz
-        com tudo em modo normal -- o sinal nunca chega a ser emitido. Só
-        modificadores soltos apareciam ali.
+        Called by the controller the window installs on itself, not by one
+        connected to vim's controller. The difference is decisive:
+        GtkEventControllerKey hands the key to the input context BEFORE
+        emitting key-pressed, and if the context filters it -- which is what
+        vim does with everything in normal mode -- the signal is never
+        emitted. Only bare modifiers ever showed up there.
         """
         if self._vim is None:
             return False
-        depurando = bool(os.environ.get("SERIFA_DEBUG"))
+        debugging = bool(os.environ.get("SERIFA_DEBUG"))
 
-        if estado & (Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.ALT_MASK):
-            self._sequencia.clear()
+        if state & (Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.ALT_MASK):
+            self._sequence.clear()
             return False
 
-        if keyval in MODIFICADORES:
-            # Não limpa a sequência: era exatamente isto que quebrava o vi{.
-            # O "{" precisa de Shift, o Shift chega como tecla própria entre o
-            # "i" e o "{", e a sequência morria aí -- o "{" chegava com a
-            # máquina já zerada.
+        if keyval in MODIFIERS:
+            # Does not clear the sequence: this is exactly what broke vi{.
+            # "{" needs Shift, Shift arrives as a key of its own between the
+            # "i" and the "{", and the sequence died there -- the "{" arrived
+            # with the state machine already reset.
             return False
 
-        codigo = Gdk.keyval_to_unicode(keyval)
-        tecla = chr(codigo) if codigo else ""
-        if depurando:
+        code = Gdk.keyval_to_unicode(keyval)
+        key = chr(code) if code else ""
+        if debugging:
             print(
-                f"[tecla] {tecla!r:5} keyval={keyval} sequência={self._sequencia} "
+                f"[tecla] {key!r:5} keyval={keyval} sequência={self._sequence} "
                 f"seleção={bool(self.buffer.get_selection_bounds())}",
                 flush=True,
             )
-        if not tecla:
-            self._sequencia.clear()
+        if not key:
+            self._sequence.clear()
             return False
 
-        if not self._sequencia:
-            # Sem exigir ausência de seleção: em modo normal o vim pode manter
-            # uma, e exigir que não houvesse era o que impedia a sequência de
-            # armar -- o "v" entrava e saía sem deixar rastro.
-            if tecla == "v":
-                self._sequencia.append("v")
-                self._tamanho_no_v = self.buffer.get_char_count()
+        if not self._sequence:
+            # No requirement that nothing be selected: in normal mode vim may
+            # keep a selection, and demanding there be none was what kept the
+            # sequence from arming -- the "v" came and went without a trace.
+            if key == "v":
+                self._sequence.append("v")
+                self._length_at_v = self.buffer.get_char_count()
             return False
 
-        # Se o texto mudou desde o "v", estávamos em modo de inserção e aquele
-        # "v" era só a letra v. Nada a fazer aqui.
-        if self.buffer.get_char_count() != self._tamanho_no_v:
-            if depurando:
+        # If the text changed since the "v", we were in insert mode and that
+        # "v" was just the letter v. Nothing to do here.
+        if self.buffer.get_char_count() != self._length_at_v:
+            if debugging:
                 print("[tecla] texto mudou desde o v: era inserção, abortando",
                       flush=True)
-            self._sequencia.clear()
+            self._sequence.clear()
             return False
 
-        if len(self._sequencia) == 1:
-            if tecla in ("i", "a"):
-                self._sequencia.append(tecla)
-                return True   # o vim não tem o que fazer com isto no visual
-            self._sequencia.clear()
+        if len(self._sequence) == 1:
+            if key in ("i", "a"):
+                self._sequence.append(key)
+                return True   # vim has nothing to do with this in visual mode
+            self._sequence.clear()
             return False
 
-        por_dentro = self._sequencia[1] == "i"
-        self._sequencia.clear()
-        resultado = self._selecionar_bloco(tecla, por_dentro)
-        if depurando and not resultado:
-            print(f"[tecla] nenhum bloco {tecla!r} em volta do cursor", flush=True)
-        return resultado
+        inside = self._sequence[1] == "i"
+        self._sequence.clear()
+        found = self._select_block(key, inside)
+        if debugging and not found:
+            print(f"[tecla] nenhum bloco {key!r} em volta do cursor", flush=True)
+        return found
 
-    def _selecionar_bloco(self, sinal: str, por_dentro: bool) -> bool:
-        texto = self.texto
+    def _select_block(self, sign: str, inside: bool) -> bool:
+        text = self.text
         cursor = self.buffer.get_iter_at_mark(self.buffer.get_insert())
-        faixa = target(texto, cursor.get_offset(), sinal, por_dentro)
-        if faixa is None:
+        span = target(text, cursor.get_offset(), sign, inside)
+        if span is None:
             return False
 
-        inicio, fim = faixa
-        self._aplicar_selecao(inicio, fim)
-        # O vim está em modo visual de verdade -- deixamos o "v" passar -- e
-        # pode reajustar a seleção depois de nós: a dele é inclusiva do
-        # caractere sob o cursor, a do GTK é exclusiva no fim. Em vez de supor
-        # o sentido do ajuste e errar por um caractere para algum lado, a
-        # seleção é medida num idle e reposta se tiver mudado.
-        GLib.idle_add(self._corrigir_selecao, inicio, fim, texto)
+        start, end = span
+        self._apply_selection(start, end)
+        # Vim is in visual mode for real -- we let the "v" through -- and may
+        # readjust the selection after us: vim's is inclusive of the character
+        # under the cursor, GTK's is exclusive at the end. Rather than guess
+        # the direction of the adjustment and be off by one either way, the
+        # selection is measured in an idle and restored if it changed.
+        GLib.idle_add(self._fix_selection, start, end, text)
         return True
 
-    def _aplicar_selecao(self, inicio: int, fim: int) -> None:
-        # Cursor no fim e âncora no começo, que é como o vim deixa o visual.
+    def _apply_selection(self, start: int, end: int) -> None:
+        # Cursor at the end and anchor at the start, which is how vim leaves
+        # visual mode.
         self.buffer.select_range(
-            self.buffer.get_iter_at_offset(fim),
-            self.buffer.get_iter_at_offset(inicio),
+            self.buffer.get_iter_at_offset(end),
+            self.buffer.get_iter_at_offset(start),
         )
 
-    def _corrigir_selecao(self, inicio: int, fim: int, texto: str) -> bool:
-        limites = self.buffer.get_selection_bounds()
-        atual = (
-            (limites[0].get_offset(), limites[1].get_offset()) if limites else None
+    def _fix_selection(self, start: int, end: int, text: str) -> bool:
+        bounds = self.buffer.get_selection_bounds()
+        current = (
+            (bounds[0].get_offset(), bounds[1].get_offset()) if bounds else None
         )
-        if atual != (inicio, fim):
+        if current != (start, end):
             if os.environ.get("SERIFA_DEBUG"):
                 print(
-                    f"[bloco] queria ({inicio},{fim})={texto[inicio:fim]!r}, "
-                    f"o vim deixou {atual}; repondo",
+                    f"[bloco] queria ({start},{end})={text[start:end]!r}, "
+                    f"o vim deixou {current}; repondo",
                     flush=True,
                 )
-            self._aplicar_selecao(inicio, fim)
+            self._apply_selection(start, end)
         elif os.environ.get("SERIFA_DEBUG"):
-            print(f"[bloco] ({inicio},{fim})={texto[inicio:fim]!r} intacta", flush=True)
+            print(f"[bloco] ({start},{end})={text[start:end]!r} intacta", flush=True)
         return GLib.SOURCE_REMOVE
 
-    # ------------------------------------------------------- pares e ambientes
+    # ------------------------------------------------ pairs and environments
 
-    def _antes_de_inserir(
-        self, buffer: GtkSource.Buffer, posicao: Gtk.TextIter, texto: str, tamanho: int
+    def _before_insert(
+        self, buffer: GtkSource.Buffer, where: Gtk.TextIter, text: str, length: int
     ) -> None:
-        """Passa por cima do fechamento em vez de duplicá-lo."""
-        if self._inserindo or not self._pares_automaticos:
+        """Steps over the closer instead of doubling it."""
+        if self._inserting or not self._auto_pairs:
             return
-        if texto not in PASSAVEIS or posicao.is_end():
+        if text not in SKIPPABLE or where.is_end():
             return
-        if posicao.get_char() != texto:
+        if where.get_char() != text:
             return
         buffer.stop_emission_by_name("insert-text")
-        seguinte = posicao.copy()
-        seguinte.forward_char()
-        buffer.place_cursor(seguinte)
+        following = where.copy()
+        following.forward_char()
+        buffer.place_cursor(following)
 
-    def _depois_de_inserir(
-        self, buffer: GtkSource.Buffer, posicao: Gtk.TextIter, texto: str, tamanho: int
+    def _after_insert(
+        self, buffer: GtkSource.Buffer, where: Gtk.TextIter, text: str, length: int
     ) -> None:
-        if self._inserindo or not self._pares_automaticos:
+        if self._inserting or not self._auto_pairs:
             return
-        if texto in FECHAMENTO:
-            self._fechar_par(buffer, posicao, texto)
-        elif texto == "\n":
-            self._fechar_ambiente(buffer, posicao)
+        if text in CLOSERS:
+            self._close_pair(buffer, where, text)
+        elif text == "\n":
+            self._close_environment(buffer, where)
 
-    def _fechar_par(
-        self, buffer: GtkSource.Buffer, posicao: Gtk.TextIter, abertura: str
+    def _close_pair(
+        self, buffer: GtkSource.Buffer, where: Gtk.TextIter, opener: str
     ) -> None:
-        # Não duplica o $ quando o seguinte já é um $: aí o usuário está
-        # fechando a matemática inline, não abrindo outra.
-        if abertura == "$" and not posicao.is_end() and posicao.get_char() == "$":
+        # Does not double the $ when the next character already is a $: then
+        # the user is closing inline math, not opening more.
+        if opener == "$" and not where.is_end() and where.get_char() == "$":
             return
 
-        entre = posicao.get_offset()
-        self._inserindo = True
-        buffer.insert(posicao, FECHAMENTO[abertura])
-        self._inserindo = False
-        buffer.place_cursor(buffer.get_iter_at_offset(entre))
+        between = where.get_offset()
+        self._inserting = True
+        buffer.insert(where, CLOSERS[opener])
+        self._inserting = False
+        buffer.place_cursor(buffer.get_iter_at_offset(between))
 
-    def _fechar_ambiente(self, buffer: GtkSource.Buffer, posicao: Gtk.TextIter) -> None:
-        if posicao.get_line() == 0:
+    def _close_environment(self, buffer: GtkSource.Buffer, where: Gtk.TextIter) -> None:
+        if where.get_line() == 0:
             return
-        inicio = buffer.get_iter_at_line(posicao.get_line() - 1)
-        if isinstance(inicio, tuple):  # a assinatura mudou entre versões
-            inicio = inicio[1]
-        fim = inicio.copy()
-        if not fim.ends_line():
-            fim.forward_to_line_end()
-        linha = inicio.get_text(fim)
+        start = buffer.get_iter_at_line(where.get_line() - 1)
+        if isinstance(start, tuple):  # the signature changed between versions
+            start = start[1]
+        end = start.copy()
+        if not end.ends_line():
+            end.forward_to_line_end()
+        line = start.get_text(end)
 
-        casamento = ABERTURA_DE_AMBIENTE.search(linha)
-        if casamento is None:
+        match = ENVIRONMENT_OPENING.search(line)
+        if match is None:
             return
 
-        ambiente = casamento.group(1)
-        recuo = re.match(r"[ \t]*", linha).group(0)
-        dentro = posicao.get_offset() + len(recuo) + 2
+        environment = match.group(1)
+        indent = re.match(r"[ \t]*", line).group(0)
+        inside = where.get_offset() + len(indent) + 2
 
-        self._inserindo = True
-        buffer.insert(posicao, f"{recuo}  \n{recuo}\\end{{{ambiente}}}")
-        self._inserindo = False
-        buffer.place_cursor(buffer.get_iter_at_offset(dentro))
+        self._inserting = True
+        buffer.insert(where, f"{indent}  \n{indent}\\end{{{environment}}}")
+        self._inserting = False
+        buffer.place_cursor(buffer.get_iter_at_offset(inside))
 
-    # ------------------------------------------------------------- ortografia
+    # ------------------------------------------------------------- spelling
 
-    def _preparar_ortografia(self) -> None:
+    def _setup_spelling(self) -> None:
         if Spelling is None:
             return
-        provedor = Spelling.Provider.get_default()
-        idiomas = {lingua.get_code() for lingua in provedor.list_languages()}
-        # Preferência: português do Brasil, de Portugal, e só então o padrão.
-        escolhido = next(
-            (c for c in ("pt_BR", "pt_PT", "pt") if c in idiomas), None
+        provider = Spelling.Provider.get_default()
+        languages = {language.get_code() for language in provider.list_languages()}
+        # Preference: Brazilian Portuguese, European Portuguese, then generic.
+        chosen = next(
+            (c for c in ("pt_BR", "pt_PT", "pt") if c in languages), None
         )
-        if escolhido is None:
-            # Sem dicionário de português instalado não vale corrigir em inglês
-            # um texto que é todo em português: fica desligado.
+        if chosen is None:
+            # With no Portuguese dictionary installed, correcting in English a
+            # text that is all Portuguese is worse than nothing: stay off.
             return
-        verificador = Spelling.Checker.new(provedor, escolhido)
-        adaptador = Spelling.TextBufferAdapter.new(self.buffer, verificador)
-        self.set_extra_menu(adaptador.get_menu_model())
-        self.insert_action_group("spelling", adaptador)
-        adaptador.set_enabled(True)
-        self._adaptador_ortografico = adaptador
+        checker = Spelling.Checker.new(provider, chosen)
+        adapter = Spelling.TextBufferAdapter.new(self.buffer, checker)
+        self.set_extra_menu(adapter.get_menu_model())
+        self.insert_action_group("spelling", adapter)
+        adapter.set_enabled(True)
+        self._spelling_adapter = adapter
 
     @property
-    def tem_ortografia(self) -> bool:
-        return self._adaptador_ortografico is not None
+    def has_spellcheck(self) -> bool:
+        return self._spelling_adapter is not None
 
-    # ------------------------------------------------------------- utilidades
+    # ------------------------------------------------------------- utilities
 
-    def _ao_mover_cursor(self, *_args) -> None:
-        onde = self.buffer.get_iter_at_mark(self.buffer.get_insert())
-        self.emit("cursor-movido", onde.get_line() + 1, onde.get_line_offset() + 1)
+    def _on_cursor_moved(self, *_args) -> None:
+        where = self.buffer.get_iter_at_mark(self.buffer.get_insert())
+        self.emit("cursor-moved", where.get_line() + 1, where.get_line_offset() + 1)
 
-    def ir_para_linha(self, linha: int) -> None:
-        """Põe o cursor no começo da linha (1-based) e rola até lá."""
-        linha = max(0, linha - 1)
-        onde = self.buffer.get_iter_at_line(linha)
-        if isinstance(onde, tuple):  # a assinatura mudou entre versões
-            onde = onde[1]
-        self.buffer.place_cursor(onde)
-        self.scroll_to_iter(onde, 0.25, True, 0.0, 0.35)
+    def go_to_line(self, line: int) -> None:
+        """Puts the cursor at the start of the line (1-based) and scrolls there."""
+        line = max(0, line - 1)
+        where = self.buffer.get_iter_at_line(line)
+        if isinstance(where, tuple):  # the signature changed between versions
+            where = where[1]
+        self.buffer.place_cursor(where)
+        self.scroll_to_iter(where, 0.25, True, 0.0, 0.35)
         self.grab_focus()
 
     @property
-    def texto(self) -> str:
-        inicio, fim = self.buffer.get_bounds()
-        return self.buffer.get_text(inicio, fim, True)
+    def text(self) -> str:
+        start, end = self.buffer.get_bounds()
+        return self.buffer.get_text(start, end, True)
 
-    def contar_palavras(self) -> int:
-        # Tira comandos, matemática e comentários antes de contar: o que
-        # interessa é a prosa, que é o que o limite de página cobra.
-        texto = re.sub(r"(?m)%.*$", "", self.texto)
-        texto = re.sub(r"\$[^$]*\$", "", texto)
-        texto = re.sub(r"\\[A-Za-z@]+\*?", " ", texto)
-        texto = re.sub(r"[{}\[\]~\\]", " ", texto)
-        return len([p for p in texto.split() if any(c.isalnum() for c in p)])
+    def count_words(self) -> int:
+        # Strip commands, math and comments before counting: what matters is
+        # the prose, which is what the page limit charges for.
+        text = re.sub(r"(?m)%.*$", "", self.text)
+        text = re.sub(r"\$[^$]*\$", "", text)
+        text = re.sub(r"\\[A-Za-z@]+\*?", " ", text)
+        text = re.sub(r"[{}\[\]~\\]", " ", text)
+        return len([w for w in text.split() if any(c.isalnum() for c in w)])

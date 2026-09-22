@@ -66,7 +66,7 @@ def montar_janela_completa(app):
     # Registra toda tecla no ponto exato em que ela chega ao controlador do
     # vim, antes do filtro. "consumida=True" quer dizer que alguém da Serifa
     # ficou com ela e o vim nunca a viu.
-    controlador_vim = editor._controlador_vim
+    controlador_vim = editor._vim_controller
 
     def espiar(_c, keyval, _code, estado):
         nome = Gdk.keyval_name(keyval) or "?"
@@ -86,7 +86,7 @@ def montar_janela_completa(app):
 
     import os
     os.environ.setdefault("SERIFA_DEBUG", "1")   # liga o relato de [bloco]
-    print(f"variante=janela  vim={editor.vim_ativo}  "
+    print(f"variante=janela  vim={editor.vim_active}  "
           f"overwrite={editor.get_overwrite()}", flush=True)
     print("Ponha o cursor dentro de {...} e tente: viw, depois ci{, depois vi{",
           flush=True)
@@ -123,7 +123,7 @@ def montar(app):
         vista.add_controller(antes)
 
     if VARIANTE == "editor":
-        vista.alternar_vim(True)   # o caminho da Serifa, não a receita crua
+        vista.toggle_vim(True)   # o caminho da Serifa, não a receita crua
     else:
         vim = GtkSource.VimIMContext()
         chaves = Gtk.EventControllerKey()

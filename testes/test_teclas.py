@@ -27,7 +27,7 @@ class TestTextObjects(CasoGrafico):
     def preparar(self, texto, marca):
         self.buffer.set_text(texto)
         self.buffer.place_cursor(self.buffer.get_iter_at_offset(texto.index(marca)))
-        self.editor._sequencia.clear()
+        self.editor._sequence.clear()
 
     def test_vi_chaves(self):
         self.preparar(r"\textbf{palavra aqui} fim", "palavra")
@@ -58,7 +58,7 @@ class TestTextObjects(CasoGrafico):
         self.janela._ao_teclar(None, keyval, 0, estado)
         self.janela._ao_teclar(None, Gdk.unicode_to_keyval(ord("i")), 0, estado)
         self.janela._ao_teclar(None, Gdk.KEY_Shift_L, 0, estado)
-        self.assertEqual(self.editor._sequencia, ["v", "i"],
+        self.assertEqual(self.editor._sequence, ["v", "i"],
                          "o Shift zerou a sequência")
 
     def test_sem_bloco_a_tecla_segue_para_o_vim(self):
@@ -71,7 +71,7 @@ class TestTextObjects(CasoGrafico):
         # A correção errada anterior punha o controlador em NONE enquanto o
         # balão estivesse aberto, e o modo normal parava de funcionar.
         def fase():
-            return self.editor._controlador_vim.get_propagation_phase()
+            return self.editor._vim_controller.get_propagation_phase()
 
         self.assertEqual(fase(), Gtk.PropagationPhase.CAPTURE)
         self.buffer.set_text("")
