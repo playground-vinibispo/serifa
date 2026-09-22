@@ -95,13 +95,13 @@ class CasoGrafico(unittest.TestCase):
 
         import serifa.window as modulo_janela
 
-        self._estado_original = modulo_janela.ESTADO
-        modulo_janela.ESTADO = self.caixa / "estado.json"
+        self._estado_original = modulo_janela.STATE
+        modulo_janela.STATE = self.caixa / "estado.json"
 
-        from serifa.window import Janela
+        from serifa.window import Window
 
-        self.janela = Janela(application=self._app)
-        self.janela._compilacao_continua = self.continua
+        self.janela = Window(application=self._app)
+        self.janela._continuous_build = self.continua
         self.janela.present()
         self.editor = self.janela._editor
         self.buffer = self.editor.buffer
@@ -110,7 +110,7 @@ class CasoGrafico(unittest.TestCase):
     def tearDown(self) -> None:
         import serifa.window as modulo_janela
 
-        modulo_janela.ESTADO = self._estado_original
+        modulo_janela.STATE = self._estado_original
         self.janela.destroy()
         bombear(60)
         self._temporaria.cleanup()
@@ -142,8 +142,8 @@ class CasoGrafico(unittest.TestCase):
         for caractere in sequencia:
             keyval, estado = tecla(caractere)
             if estado & Gdk.ModifierType.SHIFT_MASK:
-                self.janela._ao_teclar(None, Gdk.KEY_Shift_L, 0, Gdk.ModifierType(0))
-            consumidas.append(self.janela._ao_teclar(None, keyval, 0, estado))
+                self.janela._on_key_pressed(None, Gdk.KEY_Shift_L, 0, Gdk.ModifierType(0))
+            consumidas.append(self.janela._on_key_pressed(None, keyval, 0, estado))
         return consumidas
 
     def selecao(self) -> str | None:

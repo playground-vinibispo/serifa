@@ -56,14 +56,14 @@ class TestMedidaDaColuna(CasoGrafico):
     def test_painel_largo_limita_a_medida(self):
         from serifa.appearance import MEASURE
         self.janela.set_default_size(1900, 1000)
-        self.janela._divisor.set_position(1300)
+        self.janela._split.set_position(1300)
         bombear(500)
         self.assertLessEqual(self.caracteres_visiveis(), MEASURE + 2)
         self.assertGreater(self.editor.get_left_margin(), 24)
 
     def test_painel_estreito_usa_a_margem_minima(self):
         self.janela.set_default_size(700, 600)
-        self.janela._divisor.set_position(360)
+        self.janela._split.set_position(360)
         bombear(500)
         self.assertEqual(self.editor.get_left_margin(), 24)
 

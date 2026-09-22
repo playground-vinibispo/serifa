@@ -34,7 +34,7 @@ textview.serifa-editor {{
     font-family: "{FONT}", "Red Hat Mono", monospace;
     font-size: {BODY_SIZE}pt;
 }}
-.serifa-estado {{
+.serifa-status {{
     font-size: 0.85em;
 }}
 """

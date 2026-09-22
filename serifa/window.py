@@ -1,4 +1,4 @@
-r"""A janela: sumário, editor, preview, diagnósticos e barra de estado."""
+r"""The window: outline, editor, preview, diagnostics and status bar."""
 
 from __future__ import annotations
 
@@ -24,20 +24,20 @@ from .editor import Editor
 from .formatting import FORMATS, SHORTCUTS, wrap
 from .preview import Preview
 
-# O conteúdo entre chaves pode quebrar linha e conter um nível de chaves
-# aninhadas (\section*{\normalsize 1 --- ...}), então nada de [^}]* aqui.
-SECAO = re.compile(
+# What sits between the braces may break across lines and hold one level of
+# nested braces (\section*{\normalsize 1 --- ...}), so no [^}]* here.
+SECTION = re.compile(
     r"^[ \t]*\\(chapter|section|subsection|subsubsection|paragraph)\*?\s*"
     r"\{((?:[^{}]|\{[^{}]*\})*)\}",
     re.MULTILINE | re.DOTALL,
 )
-NIVEL = {"chapter": 0, "section": 0, "subsection": 1, "subsubsection": 2, "paragraph": 3}
+LEVEL = {"chapter": 0, "section": 0, "subsection": 1, "subsubsection": 2, "paragraph": 3}
 
-ESTADO = session.DEFAULT
+STATE = session.DEFAULT
 
 
-class Janela(Adw.ApplicationWindow):
-    __gtype_name__ = "SerifaJanela"
+class Window(Adw.ApplicationWindow):
+    __gtype_name__ = "SerifaWindow"
 
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -45,760 +45,768 @@ class Janela(Adw.ApplicationWindow):
         self.set_title("Serifa")
         self.set_default_size(1500, 940)
 
-        self._temporizador_compilacao = 0
-        self._temporizador_sumario = 0
-        self._compilacao_continua = True
-        self._diagnosticos: list[Diagnostic] = []
+        self._build_timer = 0
+        self._outline_timer = 0
+        self._continuous_build = True
+        self._diagnostics: list[Diagnostic] = []
 
-        self._compilador = Builder()
-        self._compilador.connect("started", self._ao_comecar_compilacao)
-        self._compilador.connect("finished", self._ao_terminar_compilacao)
+        self._builder = Builder()
+        self._builder.connect("started", self._on_build_started)
+        self._builder.connect("finished", self._on_build_finished)
 
-        self._montar()
-        self._instalar_acoes()
-        self._restaurar_estado()
-        self.connect("close-request", self._ao_pedir_fechamento)
+        self._build_ui()
+        self._install_actions()
+        self._restore_state()
+        self.connect("close-request", self._on_close_request)
 
-        # Na fase de captura o GTK despacha da raiz até o alvo, então um
-        # controlador aqui na janela roda antes do controlador do vim, que
-        # está no editor. É o único lugar de onde dá para ver as teclas que o
-        # contexto de entrada do vim filtraria.
-        teclas = Gtk.EventControllerKey()
-        teclas.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
-        teclas.connect("key-pressed", self._ao_teclar)
-        self.add_controller(teclas)
+        # In the capture phase GTK dispatches from the root down to the target,
+        # so a controller here on the window runs before vim's controller,
+        # which sits on the editor. It is the only place from which the keys
+        # vim's input context would filter can be seen.
+        keys = Gtk.EventControllerKey()
+        keys.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        keys.connect("key-pressed", self._on_key_pressed)
+        self.add_controller(keys)
 
-    def _ao_teclar(self, _controlador, keyval: int, _codigo: int, estado) -> bool:
-        # is_focus, não has_focus: a tecla só chega aqui com a janela ativa,
-        # então basta saber se o editor é o foco dela. has_focus exige também
-        # a janela ativa, o que num compositor sem teclado (testes) nunca vale.
+    def _on_key_pressed(self, _controller, keyval: int, _keycode: int, state) -> bool:
+        # is_focus, not has_focus: a key only gets here while the window is
+        # active, so all that matters is whether the editor is its focus.
+        # has_focus also demands an active window, which never holds in a
+        # compositor with no keyboard (the tests).
         if not self._editor.is_focus():
             return False
-        if self._popup.handle_key(keyval, estado):
+        if self._popup.handle_key(keyval, state):
             return True
-        return self._editor.handle_key(keyval, estado)
+        return self._editor.handle_key(keyval, state)
 
     @property
-    def _arquivo(self) -> Path | None:
-        return self._documento.path
+    def _file(self) -> Path | None:
+        return self._document.path
 
     @property
-    def _sujo(self) -> bool:
-        return self._documento.dirty
+    def _dirty(self) -> bool:
+        return self._document.dirty
 
     # ---------------------------------------------------------------- UI
 
-    def _montar(self) -> None:
+    def _build_ui(self) -> None:
         install_css()
         self._editor = Editor()
         self.buffer = self._editor.buffer
-        self._documento = Document(self.buffer)
-        self._documento.connect("dirty-changed", self._ao_mudar_sujeira)
-        self._documento.connect("reloaded", self._ao_recarregar)
-        self._documento.connect("conflict", self._ao_conflito)
-        self._documento.connect("failed", lambda _d, m: self._avisar(m))
-        self._editor.buffer.connect("changed", self._ao_mudar_texto)
-        self._editor.connect("cursor-moved", self._ao_mover_cursor)
+        self._document = Document(self.buffer)
+        self._document.connect("dirty-changed", self._on_dirty_changed)
+        self._document.connect("reloaded", self._on_reloaded)
+        self._document.connect("conflict", self._on_conflict)
+        self._document.connect("failed", lambda _d, m: self._toast(m))
+        self._editor.buffer.connect("changed", self._on_text_changed)
+        self._editor.connect("cursor-moved", self._on_cursor_moved)
 
-        # Comandos e ambientes vêm de um .snippets gerado em serifa/complete.py.
-        gerente = GtkSource.SnippetManager.get_default()
-        caminhos = list(gerente.get_search_path() or [])
-        pasta_snippets = str(prepare_snippets())
-        if pasta_snippets not in caminhos:
-            gerente.set_search_path([pasta_snippets, *caminhos])
+        # Commands and environments come from a .snippets generated in
+        # serifa/complete.py.
+        manager = GtkSource.SnippetManager.get_default()
+        paths = list(manager.get_search_path() or [])
+        snippets_folder = str(prepare_snippets())
+        if snippets_folder not in paths:
+            manager.set_search_path([snippets_folder, *paths])
 
         self._keys = KeySource()
-        completacao = self._editor.get_completion()
-        completacao.add_provider(GtkSource.CompletionSnippets.new())
+        completion = self._editor.get_completion()
+        completion.add_provider(GtkSource.CompletionSnippets.new())
 
-        palavras = GtkSource.CompletionWords.new("Documento")
-        palavras.register(self._editor.buffer)
-        completacao.add_provider(palavras)
+        words = GtkSource.CompletionWords.new("Documento")
+        words.register(self._editor.buffer)
+        completion.add_provider(words)
 
-        # Chaves de .bib e \label num buffer à parte: é assim que o
-        # CompletionWords enxerga palavras que não estão no texto aberto.
-        citacoes = GtkSource.CompletionWords.new("Citações e rótulos")
-        citacoes.register(self._keys.buffer)
-        completacao.add_provider(citacoes)
+        # .bib keys and \labels in a buffer of their own: that is how
+        # CompletionWords gets to see words that are not in the open text.
+        citations = GtkSource.CompletionWords.new("Citações e rótulos")
+        citations.register(self._keys.buffer)
+        completion.add_provider(citations)
 
-        completacao.set_property("select-on-show", True)
+        completion.set_property("select-on-show", True)
 
-        # Dentro de \cite{, \ref{, \begin{ e \input{ quem responde é um
-        # popup próprio: ver o cabeçalho de serifa/context.py para o motivo.
+        # Inside \cite{, \ref{, \begin{ and \input{ a popup of our own answers
+        # instead: see the header of serifa/context.py for why.
         self._library = Library()
         self._popup = Popup(self._editor, self._library)
 
-        rolagem = Gtk.ScrolledWindow()
-        rolagem.set_child(self._editor)
-        rolagem.set_vexpand(True)
+        scroller = Gtk.ScrolledWindow()
+        scroller.set_child(self._editor)
+        scroller.set_vexpand(True)
 
-        # --- busca e substituição
-        self._busca = GtkSource.SearchContext.new(self._editor.buffer, None)
-        self._busca.get_settings().set_wrap_around(True)
-        self._campo_busca = Gtk.SearchEntry()
-        self._campo_busca.set_placeholder_text("Buscar no texto")
-        self._campo_busca.connect("search-changed", self._ao_buscar)
-        self._campo_busca.connect("activate", lambda *_: self._proxima_ocorrencia())
-        barra_busca = Gtk.SearchBar()
-        barra_busca.set_child(self._campo_busca)
-        barra_busca.connect_entry(self._campo_busca)
-        self._barra_busca = barra_busca
+        # --- search and replace
+        self._search = GtkSource.SearchContext.new(self._editor.buffer, None)
+        self._search.get_settings().set_wrap_around(True)
+        self._search_entry = Gtk.SearchEntry()
+        self._search_entry.set_placeholder_text("Buscar no texto")
+        self._search_entry.connect("search-changed", self._on_search)
+        self._search_entry.connect("activate", lambda *_: self._next_match())
+        search_bar = Gtk.SearchBar()
+        search_bar.set_child(self._search_entry)
+        search_bar.connect_entry(self._search_entry)
+        self._search_bar = search_bar
 
-        # --- diagnósticos
-        self._lista_diagnosticos = Gtk.ListBox()
-        self._lista_diagnosticos.add_css_class("boxed-list")
-        self._lista_diagnosticos.connect("row-activated", self._ao_clicar_diagnostico)
-        rolagem_diag = Gtk.ScrolledWindow()
-        rolagem_diag.set_child(self._lista_diagnosticos)
-        rolagem_diag.set_min_content_height(150)
-        rolagem_diag.set_max_content_height(260)
-        rolagem_diag.set_propagate_natural_height(True)
-        self._painel_diagnosticos = Gtk.Revealer()
-        self._painel_diagnosticos.set_child(rolagem_diag)
-        self._painel_diagnosticos.set_transition_type(
+        # --- diagnostics
+        self._diagnostics_list = Gtk.ListBox()
+        self._diagnostics_list.add_css_class("boxed-list")
+        self._diagnostics_list.connect("row-activated", self._on_diagnostic_activated)
+        diagnostics_scroller = Gtk.ScrolledWindow()
+        diagnostics_scroller.set_child(self._diagnostics_list)
+        diagnostics_scroller.set_min_content_height(150)
+        diagnostics_scroller.set_max_content_height(260)
+        diagnostics_scroller.set_propagate_natural_height(True)
+        self._diagnostics_panel = Gtk.Revealer()
+        self._diagnostics_panel.set_child(diagnostics_scroller)
+        self._diagnostics_panel.set_transition_type(
             Gtk.RevealerTransitionType.SLIDE_UP
         )
 
-        coluna_editor = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        coluna_editor.append(barra_busca)
-        coluna_editor.append(rolagem)
-        coluna_editor.append(self._painel_diagnosticos)
+        editor_column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        editor_column.append(search_bar)
+        editor_column.append(scroller)
+        editor_column.append(self._diagnostics_panel)
 
-        # --- sumário
-        self._sumario = Gtk.ListBox()
-        self._sumario.add_css_class("navigation-sidebar")
-        self._sumario.connect("row-activated", self._ao_clicar_sumario)
-        rolagem_sumario = Gtk.ScrolledWindow()
-        rolagem_sumario.set_child(self._sumario)
-        rolagem_sumario.set_vexpand(True)
-        caixa_sumario = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        cabecalho_sumario = Adw.HeaderBar()
-        cabecalho_sumario.set_show_end_title_buttons(False)
-        cabecalho_sumario.set_title_widget(Adw.WindowTitle(title="Sumário"))
-        caixa_sumario.append(cabecalho_sumario)
-        caixa_sumario.append(rolagem_sumario)
+        # --- outline
+        self._outline = Gtk.ListBox()
+        self._outline.add_css_class("navigation-sidebar")
+        self._outline.connect("row-activated", self._on_outline_activated)
+        outline_scroller = Gtk.ScrolledWindow()
+        outline_scroller.set_child(self._outline)
+        outline_scroller.set_vexpand(True)
+        outline_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        outline_header = Adw.HeaderBar()
+        outline_header.set_show_end_title_buttons(False)
+        outline_header.set_title_widget(Adw.WindowTitle(title="Sumário"))
+        outline_box.append(outline_header)
+        outline_box.append(outline_scroller)
 
-        self._divisor_lateral = Adw.OverlaySplitView()
-        self._divisor_lateral.set_sidebar(caixa_sumario)
-        self._divisor_lateral.set_content(coluna_editor)
-        self._divisor_lateral.set_max_sidebar_width(280)
-        self._divisor_lateral.set_show_sidebar(True)
+        self._sidebar_split = Adw.OverlaySplitView()
+        self._sidebar_split.set_sidebar(outline_box)
+        self._sidebar_split.set_content(editor_column)
+        self._sidebar_split.set_max_sidebar_width(280)
+        self._sidebar_split.set_show_sidebar(True)
 
         # --- preview
         self._preview = Preview()
-        self._divisor = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)
-        self._divisor.set_start_child(self._divisor_lateral)
-        self._divisor.set_end_child(self._preview)
-        self._divisor.set_resize_start_child(True)
-        self._divisor.set_resize_end_child(True)
-        self._divisor.set_position(760)
+        self._split = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)
+        self._split.set_start_child(self._sidebar_split)
+        self._split.set_end_child(self._preview)
+        self._split.set_resize_start_child(True)
+        self._split.set_resize_end_child(True)
+        self._split.set_position(760)
 
-        # --- cabeçalho
-        cabecalho = Adw.HeaderBar()
+        # --- header bar
+        header = Adw.HeaderBar()
 
-        botao_abrir = Gtk.Button(icon_name="document-open-symbolic")
-        botao_abrir.set_tooltip_text("Abrir (Ctrl+O)")
-        botao_abrir.connect("clicked", lambda *_: self.abrir_dialogo())
-        cabecalho.pack_start(botao_abrir)
+        open_button = Gtk.Button(icon_name="document-open-symbolic")
+        open_button.set_tooltip_text("Abrir (Ctrl+O)")
+        open_button.connect("clicked", lambda *_: self.open_dialog())
+        header.pack_start(open_button)
 
-        # Texto em vez de ícone: o document-save-symbolic do Adwaita atual é
-        # uma seta caindo numa bandeja, indistinguível de "baixar". E o botão
-        # só fica ativo havendo o que gravar, o que responde de relance a
-        # pergunta "já salvei?".
-        self._botao_salvar = Gtk.Button(label="Salvar")
-        self._botao_salvar.set_tooltip_text("Salvar e compilar (Ctrl+S)")
-        self._botao_salvar.set_sensitive(False)
-        self._botao_salvar.connect("clicked", lambda *_: self.salvar())
-        cabecalho.pack_start(self._botao_salvar)
+        # Text instead of an icon: current Adwaita's document-save-symbolic is
+        # an arrow dropping into a tray, indistinguishable from "download".
+        # And the button is only active when there is something to save, which
+        # answers "have I saved?" at a glance.
+        self._save_button = Gtk.Button(label="Salvar")
+        self._save_button.set_tooltip_text("Salvar e compilar (Ctrl+S)")
+        self._save_button.set_sensitive(False)
+        self._save_button.connect("clicked", lambda *_: self.save())
+        header.pack_start(self._save_button)
 
-        botao_sumario = Gtk.ToggleButton(icon_name="view-list-symbolic")
-        botao_sumario.set_tooltip_text("Sumário (F9)")
-        botao_sumario.set_active(True)
-        botao_sumario.connect(
-            "toggled", lambda b: self._divisor_lateral.set_show_sidebar(b.get_active())
+        outline_button = Gtk.ToggleButton(icon_name="view-list-symbolic")
+        outline_button.set_tooltip_text("Sumário (F9)")
+        outline_button.set_active(True)
+        outline_button.connect(
+            "toggled", lambda b: self._sidebar_split.set_show_sidebar(b.get_active())
         )
-        cabecalho.pack_start(botao_sumario)
+        header.pack_start(outline_button)
 
-        formatacao = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
-        formatacao.add_css_class("linked")
-        for nome, _comando, icone, rotulo in self.FORMATOS:
-            if icone is None:
+        formatting = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        formatting.add_css_class("linked")
+        for name, _command, icon, label in self.FORMATS:
+            if icon is None:
                 continue
-            botao_formato = Gtk.Button(icon_name=icone)
-            dica = self.ATALHOS_DE_FORMATACAO.get(nome, "")
-            botao_formato.set_tooltip_text(
-                f"{rotulo} ({dica.replace('<Control>', 'Ctrl+')})" if dica else rotulo
+            format_button = Gtk.Button(icon_name=icon)
+            hint = self.FORMATTING_SHORTCUTS.get(name, "")
+            format_button.set_tooltip_text(
+                f"{label} ({hint.replace('<Control>', 'Ctrl+')})" if hint else label
             )
-            botao_formato.set_action_name(f"win.{nome}")
-            formatacao.append(botao_formato)
-        cabecalho.pack_start(formatacao)
+            format_button.set_action_name(f"win.{name}")
+            formatting.append(format_button)
+        header.pack_start(formatting)
 
-        self._titulo = Adw.WindowTitle(title="Serifa", subtitle="nenhum arquivo")
-        cabecalho.set_title_widget(self._titulo)
+        self._title = Adw.WindowTitle(title="Serifa", subtitle="nenhum arquivo")
+        header.set_title_widget(self._title)
 
         menu = Gio.Menu()
-        secao_arquivo = Gio.Menu()
-        secao_arquivo.append("Abrir…", "win.abrir")
-        secao_arquivo.append("Salvar como…", "win.salvar-como")
-        menu.append_section(None, secao_arquivo)
-        secao_ver = Gio.Menu()
-        secao_ver.append("Compilação contínua", "win.continua")
-        secao_ver.append("Preview", "win.preview")
-        secao_ver.append("Conferir texto", "win.conferir")
-        menu.append_section(None, secao_ver)
-        secao_formato = Gio.Menu()
-        for nome, _comando, _icone, rotulo in self.FORMATOS:
-            secao_formato.append(rotulo, f"win.{nome}")
-        menu.append_submenu("Formatar", secao_formato)
-        secao_zoom = Gio.Menu()
-        secao_zoom.append("Ampliar PDF", "win.zoom-mais")
-        secao_zoom.append("Reduzir PDF", "win.zoom-menos")
-        secao_zoom.append("Ajustar à largura", "win.zoom-largura")
-        menu.append_section(None, secao_zoom)
-        botao_menu = Gtk.MenuButton(icon_name="open-menu-symbolic")
-        botao_menu.set_menu_model(menu)
-        cabecalho.pack_end(botao_menu)
+        file_section = Gio.Menu()
+        file_section.append("Abrir…", "win.open")
+        file_section.append("Salvar como…", "win.save-as")
+        menu.append_section(None, file_section)
+        view_section = Gio.Menu()
+        view_section.append("Compilação contínua", "win.continuous")
+        view_section.append("Preview", "win.preview")
+        view_section.append("Conferir texto", "win.check")
+        menu.append_section(None, view_section)
+        format_section = Gio.Menu()
+        for name, _command, _icon, label in self.FORMATS:
+            format_section.append(label, f"win.{name}")
+        menu.append_submenu("Formatar", format_section)
+        zoom_section = Gio.Menu()
+        zoom_section.append("Ampliar PDF", "win.zoom-in")
+        zoom_section.append("Reduzir PDF", "win.zoom-out")
+        zoom_section.append("Ajustar à largura", "win.zoom-fit")
+        menu.append_section(None, zoom_section)
+        menu_button = Gtk.MenuButton(icon_name="open-menu-symbolic")
+        menu_button.set_menu_model(menu)
+        header.pack_end(menu_button)
 
-        self._botao_vim = Gtk.ToggleButton(label="VIM")
-        self._botao_vim.set_tooltip_text("Modo vim (Ctrl+Alt+V)")
-        self._botao_vim.add_css_class("flat")
-        self._botao_vim.connect("toggled", self._ao_alternar_vim)
-        cabecalho.pack_end(self._botao_vim)
+        self._vim_button = Gtk.ToggleButton(label="VIM")
+        self._vim_button.set_tooltip_text("Modo vim (Ctrl+Alt+V)")
+        self._vim_button.add_css_class("flat")
+        self._vim_button.connect("toggled", self._on_vim_toggled)
+        header.pack_end(self._vim_button)
 
-        self._botao_compilar = Gtk.Button(icon_name="media-playback-start-symbolic")
-        self._botao_compilar.set_tooltip_text("Compilar (Ctrl+B)")
-        self._botao_compilar.add_css_class("suggested-action")
-        self._botao_compilar.connect("clicked", lambda *_: self.compilar())
-        cabecalho.pack_end(self._botao_compilar)
+        self._build_button = Gtk.Button(icon_name="media-playback-start-symbolic")
+        self._build_button.set_tooltip_text("Compilar (Ctrl+B)")
+        self._build_button.add_css_class("suggested-action")
+        self._build_button.connect("clicked", lambda *_: self.build())
+        header.pack_end(self._build_button)
 
-        botao_busca = Gtk.ToggleButton(icon_name="edit-find-symbolic")
-        botao_busca.set_tooltip_text("Buscar (Ctrl+F)")
-        botao_busca.bind_property(
-            "active", barra_busca, "search-mode-enabled",
+        search_button = Gtk.ToggleButton(icon_name="edit-find-symbolic")
+        search_button.set_tooltip_text("Buscar (Ctrl+F)")
+        search_button.bind_property(
+            "active", search_bar, "search-mode-enabled",
             GObject.BindingFlags.BIDIRECTIONAL,
         )
-        cabecalho.pack_end(botao_busca)
+        header.pack_end(search_button)
 
-        # --- barra de estado
-        self._estado_posicao = Gtk.Label(label="1:1")
-        self._estado_palavras = Gtk.Label(label="0 palavras")
-        self._estado_vim = Gtk.Label()
-        self._estado_vim.add_css_class("monospace")
-        self._estado_vim.set_xalign(0.0)
-        self._estado_comando = Gtk.Label()
-        self._estado_comando.add_css_class("monospace")
-        self._estado_comando.set_hexpand(True)
-        self._estado_comando.set_xalign(0.0)
-        self._estado_compilacao = Gtk.Label(label="pronto")
-        self._estado_compilacao.add_css_class("dim-label")
+        # --- status bar
+        self._status_position = Gtk.Label(label="1:1")
+        self._status_words = Gtk.Label(label="0 palavras")
+        self._status_vim = Gtk.Label()
+        self._status_vim.add_css_class("monospace")
+        self._status_vim.set_xalign(0.0)
+        self._status_command = Gtk.Label()
+        self._status_command.add_css_class("monospace")
+        self._status_command.set_hexpand(True)
+        self._status_command.set_xalign(0.0)
+        self._status_build = Gtk.Label(label="pronto")
+        self._status_build.add_css_class("dim-label")
 
-        barra_estado = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=18)
-        barra_estado.set_margin_start(12)
-        barra_estado.set_margin_end(12)
-        barra_estado.set_margin_top(4)
-        barra_estado.set_margin_bottom(4)
-        for rotulo in (self._estado_posicao, self._estado_palavras,
-                       self._estado_vim, self._estado_comando):
-            rotulo.add_css_class("dim-label")
-            rotulo.add_css_class("serifa-estado")
-            barra_estado.append(rotulo)
-        barra_estado.append(self._estado_compilacao)
+        status_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=18)
+        status_bar.set_margin_start(12)
+        status_bar.set_margin_end(12)
+        status_bar.set_margin_top(4)
+        status_bar.set_margin_bottom(4)
+        for label in (self._status_position, self._status_words,
+                      self._status_vim, self._status_command):
+            label.add_css_class("dim-label")
+            label.add_css_class("serifa-status")
+            status_bar.append(label)
+        status_bar.append(self._status_build)
 
-        self._aviso = Adw.Banner()
-        self._aviso.set_button_label("Recarregar")
-        self._aviso.connect("button-clicked", lambda *_: self._recarregar())
-        self._aviso.set_revealed(False)
+        self._banner = Adw.Banner()
+        self._banner.set_button_label("Recarregar")
+        self._banner.connect("button-clicked", lambda *_: self._reload())
+        self._banner.set_revealed(False)
 
-        vista = Adw.ToolbarView()
-        vista.add_top_bar(cabecalho)
-        vista.add_top_bar(self._aviso)
-        vista.set_content(self._divisor)
-        vista.add_bottom_bar(barra_estado)
+        view = Adw.ToolbarView()
+        view.add_top_bar(header)
+        view.add_top_bar(self._banner)
+        view.set_content(self._split)
+        view.add_bottom_bar(status_bar)
 
         self._toasts = Adw.ToastOverlay()
-        self._toasts.set_child(vista)
+        self._toasts.set_child(view)
         self.set_content(self._toasts)
 
-    # ------------------------------------------------------------- ações
+    # ------------------------------------------------------------- actions
 
-    def _instalar_acoes(self) -> None:
-        atalhos = {
-            "abrir": (self.abrir_dialogo, "<Control>o"),
-            "salvar": (self.salvar, "<Control>s"),
-            "salvar-como": (self.salvar_como, "<Control><Shift>s"),
-            # Ctrl+B saiu de compilar e foi para negrito, que é onde o
-            # mundo inteiro espera achá-lo.
-            "compilar": (self.compilar, "F5"),
-            "compilar-enter": (self.compilar, "<Control>Return"),
-            "buscar": (self._focar_busca, "<Control>f"),
-            "vim": (self._alternar_vim, "<Control><Alt>v"),
-            "preview": (self._alternar_preview, "<Control><Shift>v"),
-            "sumario": (self._alternar_sumario, "F9"),
-            "zoom-mais": (lambda: self._preview.apply_zoom(1.15), "<Control>plus"),
-            "zoom-menos": (lambda: self._preview.apply_zoom(0.87), "<Control>minus"),
-            "zoom-largura": (self._preview.fit_width, "<Control>0"),
-            "conferir": (self.conferir, "<Control><Shift>c"),
-            "continua": (self._alternar_continua, None),
+    def _install_actions(self) -> None:
+        shortcuts = {
+            "open": (self.open_dialog, "<Control>o"),
+            "save": (self.save, "<Control>s"),
+            "save-as": (self.save_as, "<Control><Shift>s"),
+            # Ctrl+B moved from build to bold, which is where the whole world
+            # expects to find it.
+            "build": (self.build, "F5"),
+            "build-enter": (self.build, "<Control>Return"),
+            "search": (self._focus_search, "<Control>f"),
+            "vim": (self._toggle_vim, "<Control><Alt>v"),
+            "preview": (self._toggle_preview, "<Control><Shift>v"),
+            "outline": (self._toggle_outline, "F9"),
+            "zoom-in": (lambda: self._preview.apply_zoom(1.15), "<Control>plus"),
+            "zoom-out": (lambda: self._preview.apply_zoom(0.87), "<Control>minus"),
+            "zoom-fit": (self._preview.fit_width, "<Control>0"),
+            "check": (self.check_text, "<Control><Shift>c"),
+            "continuous": (self._toggle_continuous, None),
         }
-        for nome, comando, _icone, _rotulo in self.FORMATOS:
-            atalhos[nome] = (lambda c=comando: self.formatar(c), None)
+        for name, command, _icon, _label in self.FORMATS:
+            shortcuts[name] = (lambda c=command: self.format_text(c), None)
 
         app = None
-        for nome, (funcao, atalho) in atalhos.items():
-            acao = Gio.SimpleAction.new(nome, None)
-            acao.connect("activate", lambda _a, _p, f=funcao: f())
-            self.add_action(acao)
-            if atalho:
+        for name, (function, accel) in shortcuts.items():
+            action = Gio.SimpleAction.new(name, None)
+            action.connect("activate", lambda _a, _p, f=function: f())
+            self.add_action(action)
+            if accel:
                 app = app or self.get_application()
                 if app is not None:
-                    app.set_accels_for_action(f"win.{nome}", [atalho])
+                    app.set_accels_for_action(f"win.{name}", [accel])
 
-        self._aplicar_atalhos_de_formatacao(ligados=True)
+        self._apply_formatting_shortcuts(enabled=True)
 
-    # ------------------------------------------------------- arquivo
+    # ------------------------------------------------------- file
 
-    def abrir_dialogo(self) -> None:
-        dialogo = Gtk.FileDialog()
-        dialogo.set_title("Abrir um .tex")
-        filtro = Gtk.FileFilter()
-        filtro.set_name("LaTeX")
-        filtro.add_pattern("*.tex")
-        filtros = Gio.ListStore.new(Gtk.FileFilter)
-        filtros.append(filtro)
-        dialogo.set_filters(filtros)
-        if self._arquivo:
-            dialogo.set_initial_folder(Gio.File.new_for_path(str(self._arquivo.parent)))
-        dialogo.open(self, None, self._ao_escolher_arquivo)
+    def open_dialog(self) -> None:
+        dialog = Gtk.FileDialog()
+        dialog.set_title("Abrir um .tex")
+        latex = Gtk.FileFilter()
+        latex.set_name("LaTeX")
+        latex.add_pattern("*.tex")
+        filters = Gio.ListStore.new(Gtk.FileFilter)
+        filters.append(latex)
+        dialog.set_filters(filters)
+        if self._file:
+            dialog.set_initial_folder(Gio.File.new_for_path(str(self._file.parent)))
+        dialog.open(self, None, self._on_file_chosen)
 
-    def _ao_escolher_arquivo(self, dialogo, resultado) -> None:
+    def _on_file_chosen(self, dialog, result) -> None:
         try:
-            arquivo = dialogo.open_finish(resultado)
+            file = dialog.open_finish(result)
         except GLib.Error:
             return
-        if arquivo is None:
+        if file is None:
             return
-        caminho = Path(arquivo.get_path())
-        if not self._resolver_pendencias(lambda: self.abrir(caminho)):
-            self.abrir(caminho)
+        path = Path(file.get_path())
+        if not self._settle_pending(lambda: self.open_file(path)):
+            self.open_file(path)
 
-    def abrir(self, caminho: Path) -> None:
-        if not self._documento.open_file(caminho):
+    def open_file(self, path: Path) -> None:
+        if not self._document.open_file(path):
             return
 
-        texto = self._documento.text
+        text = self._document.text
         self._popup.reset()
-        self._keys.set_folder(caminho.parent)
-        self._library.set_folder(caminho.parent)
-        self._keys.update(texto)
-        self._atualizar_titulo()
-        self._reconstruir_sumario()
-        self._atualizar_contagem()
+        self._keys.set_folder(path.parent)
+        self._library.set_folder(path.parent)
+        self._keys.update(text)
+        self._update_title()
+        self._rebuild_outline()
+        self._update_word_count()
 
-        pdf = Builder._pdf_for(caminho, caminho.parent)
+        pdf = Builder._pdf_for(path, path.parent)
         if pdf.exists():
             self._preview.load(pdf)
-        # O Gtk.FileDialog é modal e leva o foco embora; sem devolvê-lo aqui,
-        # as teclas seguintes podem não chegar ao contexto do vim.
+        # Gtk.FileDialog is modal and takes focus away; without handing it
+        # back here, the next keys may never reach vim's context.
         self._editor.grab_focus()
-        self._guardar_estado()
+        self._save_state()
 
-    def salvar(self) -> bool:
-        if self._arquivo is None:
-            self.salvar_como()
+    def save(self) -> bool:
+        if self._file is None:
+            self.save_as()
             return False
-        if not self._gravar():
+        if not self._write():
             return False
-        self._compilador.build(self._arquivo)
+        self._builder.build(self._file)
         return True
 
-    def salvar_como(self) -> None:
-        dialogo = Gtk.FileDialog()
-        dialogo.set_title("Salvar como")
-        if self._arquivo:
-            dialogo.set_initial_name(self._arquivo.name)
-        dialogo.save(self, None, self._ao_escolher_destino)
+    def save_as(self) -> None:
+        dialog = Gtk.FileDialog()
+        dialog.set_title("Salvar como")
+        if self._file:
+            dialog.set_initial_name(self._file.name)
+        dialog.save(self, None, self._on_destination_chosen)
 
-    def _ao_escolher_destino(self, dialogo, resultado) -> None:
+    def _on_destination_chosen(self, dialog, result) -> None:
         try:
-            arquivo = dialogo.save_finish(resultado)
+            file = dialog.save_finish(result)
         except GLib.Error:
             return
-        if arquivo is not None:
-            self._documento.set_path(Path(arquivo.get_path()))
-            self._keys.set_folder(self._arquivo.parent)
-            self._library.set_folder(self._arquivo.parent)
-            self.salvar()
+        if file is not None:
+            self._document.set_path(Path(file.get_path()))
+            self._keys.set_folder(self._file.parent)
+            self._library.set_folder(self._file.parent)
+            self.save()
 
-    # ------------------------------------------------- arquivo mexido fora
+    # ------------------------------------------ file changed from outside
 
-    def _ao_conflito(self, _documento, nome: str) -> None:
-        """O disco divergiu e há trabalho não gravado. Quem decide é o usuário."""
-        self._aviso.set_title(f"{nome} mudou no disco, e há alterações não salvas aqui")
-        self._aviso.set_revealed(True)
+    def _on_conflict(self, _document, name: str) -> None:
+        """The disk diverged and there is unsaved work. The user decides."""
+        self._banner.set_title(f"{name} mudou no disco, e há alterações não salvas aqui")
+        self._banner.set_revealed(True)
 
-    def _ao_recarregar(self, _documento) -> None:
-        self._aviso.set_revealed(False)
+    def _on_reloaded(self, _document) -> None:
+        self._banner.set_revealed(False)
         self._editor.scroll_to_mark(self.buffer.get_insert(), 0.25, True, 0.0, 0.35)
-        self._reconstruir_sumario()
-        self._avisar(f"{self._documento.name} recarregado do disco")
+        self._rebuild_outline()
+        self._toast(f"{self._document.name} recarregado do disco")
 
-    def _ao_mudar_sujeira(self, _documento, sujo: bool) -> None:
-        if not sujo:
-            self._aviso.set_revealed(False)
-        self._atualizar_titulo()
+    def _on_dirty_changed(self, _document, dirty: bool) -> None:
+        if not dirty:
+            self._banner.set_revealed(False)
+        self._update_title()
 
-    def _recarregar(self) -> None:
-        self._documento.reload()
+    def _reload(self) -> None:
+        self._document.reload()
 
-    # ----------------------------------------------------- compilação
+    # ----------------------------------------------------- building
 
-    def compilar(self) -> None:
-        """Ctrl+B: grava e compila o arquivo de verdade.
+    def build(self) -> None:
+        """Ctrl+B: saves and builds the real file.
 
-        Gravar aqui é decisão do usuário, não efeito colateral -- pedir para
-        compilar é pedir para materializar o que está na tela.
+        Saving here is the user's decision, not a side effect -- asking to
+        build is asking to make real what is on screen.
         """
-        if self._arquivo is None:
-            self._avisar("Salve o arquivo antes de compilar")
+        if self._file is None:
+            self._toast("Salve o arquivo antes de compilar")
             return
-        if self._sujo and not self._gravar():
+        if self._dirty and not self._write():
             return
-        self._compilador.build(self._arquivo)
+        self._builder.build(self._file)
 
-    def previsualizar(self) -> None:
-        """A contínua: compila o buffer sem encostar no arquivo do usuário."""
-        if self._arquivo is None:
+    def preview_build(self) -> None:
+        """The continuous one: builds the buffer without touching the user's file."""
+        if self._file is None:
             return
-        self._compilador.build_preview(self._editor.text, self._arquivo)
+        self._builder.build_preview(self._editor.text, self._file)
 
-    def _gravar(self) -> bool:
-        return self._documento.save()
+    def _write(self) -> bool:
+        return self._document.save()
 
-    def _ao_comecar_compilacao(self, _compilador, previa: bool) -> None:
-        self._estado_compilacao.set_label("prévia…" if previa else "compilando…")
-        self._botao_compilar.set_sensitive(False)
+    def _on_build_started(self, _builder, preview: bool) -> None:
+        self._status_build.set_label("prévia…" if preview else "compilando…")
+        self._build_button.set_sensitive(False)
 
-    def _ao_terminar_compilacao(
-        self, _compilador, sucesso: bool, pdf: str, diagnosticos, previa: bool
+    def _on_build_finished(
+        self, _builder, success: bool, pdf: str, diagnostics, preview: bool
     ) -> None:
-        self._botao_compilar.set_sensitive(True)
-        self._diagnosticos = list(diagnosticos)
+        self._build_button.set_sensitive(True)
+        self._diagnostics = list(diagnostics)
 
         if pdf:
             self._preview.load(pdf)
 
-        erros = sum(1 for d in self._diagnosticos if d.severity == "error")
-        avisos = len(self._diagnosticos) - erros
-        if sucesso:
-            paginas = self._preview.pages
-            plural = "s" if paginas != 1 else ""
-            resumo = f"{'prévia' if previa else 'ok'} · {paginas} página{plural}"
-            if avisos:
-                resumo += f" · {avisos} aviso{'s' if avisos != 1 else ''}"
-            self._estado_compilacao.set_label(resumo)
+        errors = sum(1 for d in self._diagnostics if d.severity == "error")
+        warnings = len(self._diagnostics) - errors
+        if success:
+            pages = self._preview.pages
+            plural = "s" if pages != 1 else ""
+            summary = f"{'prévia' if preview else 'ok'} · {pages} página{plural}"
+            if warnings:
+                summary += f" · {warnings} aviso{'s' if warnings != 1 else ''}"
+            self._status_build.set_label(summary)
         else:
-            self._estado_compilacao.set_label(
-                f"{erros} erro{'s' if erros != 1 else ''}" if erros else "falhou"
+            self._status_build.set_label(
+                f"{errors} erro{'s' if errors != 1 else ''}" if errors else "falhou"
             )
 
-        self._preencher_diagnosticos()
+        self._fill_diagnostics()
 
-    def _preencher_diagnosticos(self) -> None:
-        while (linha := self._lista_diagnosticos.get_first_child()) is not None:
-            self._lista_diagnosticos.remove(linha)
+    def _fill_diagnostics(self) -> None:
+        while (row := self._diagnostics_list.get_first_child()) is not None:
+            self._diagnostics_list.remove(row)
 
-        for diagnostico in self._diagnosticos[:60]:
-            linha = Adw.ActionRow(title=GLib.markup_escape_text(diagnostico.summary))
-            linha.add_prefix(Gtk.Image.new_from_icon_name(diagnostico.icon))
-            linha.diagnostico = diagnostico
-            if diagnostico.line:
-                linha.set_activatable(True)
-            self._lista_diagnosticos.append(linha)
+        for diagnostic in self._diagnostics[:60]:
+            row = Adw.ActionRow(title=GLib.markup_escape_text(diagnostic.summary))
+            row.add_prefix(Gtk.Image.new_from_icon_name(diagnostic.icon))
+            row.diagnostic = diagnostic
+            if diagnostic.line:
+                row.set_activatable(True)
+            self._diagnostics_list.append(row)
 
-        self._painel_diagnosticos.set_reveal_child(bool(self._diagnosticos))
+        self._diagnostics_panel.set_reveal_child(bool(self._diagnostics))
 
-    def _ao_clicar_diagnostico(self, _lista, linha) -> None:
-        diagnostico = getattr(linha, "diagnostico", None)
-        if diagnostico and diagnostico.line:
-            self._editor.go_to_line(diagnostico.line)
+    def _on_diagnostic_activated(self, _list, row) -> None:
+        diagnostic = getattr(row, "diagnostic", None)
+        if diagnostic and diagnostic.line:
+            self._editor.go_to_line(diagnostic.line)
 
-    # ------------------------------------------------------------ formatação
+    # ------------------------------------------------------------ formatting
 
-    FORMATOS = FORMATS
-    ATALHOS_DE_FORMATACAO = SHORTCUTS
+    FORMATS = FORMATS
+    FORMATTING_SHORTCUTS = SHORTCUTS
 
-    def formatar(self, comando: str) -> None:
-        wrap(self._editor.buffer, comando)
+    def format_text(self, command: str) -> None:
+        wrap(self._editor.buffer, command)
         self._editor.grab_focus()
 
-    # -------------------------------------------------------- conferidor
+    # -------------------------------------------------------- text checker
 
-    def conferir(self) -> None:
-        """Roda o scripts/conferir-texto.py do projeto, quando há um."""
-        if self._arquivo is None:
+    def check_text(self) -> None:
+        """Runs the project's scripts/conferir-texto.py, when there is one."""
+        if self._file is None:
             return
-        pasta = self._arquivo.parent
+        folder = self._file.parent
         script = None
-        for candidata in [pasta, *pasta.parents]:
-            possivel = candidata / "scripts" / "conferir-texto.py"
-            if possivel.is_file():
-                script = possivel
+        for candidate in [folder, *folder.parents]:
+            possible = candidate / "scripts" / "conferir-texto.py"
+            if possible.is_file():
+                script = possible
                 break
         if script is None:
-            self._avisar("Este projeto não tem scripts/conferir-texto.py")
+            self._toast("Este projeto não tem scripts/conferir-texto.py")
             return
 
         try:
-            saida = subprocess.run(
-                ["/usr/bin/python3.12", str(script), str(pasta)],
+            output = subprocess.run(
+                ["/usr/bin/python3.12", str(script), str(folder)],
                 capture_output=True,
                 text=True,
                 timeout=60,
                 cwd=str(script.parent.parent),
             )
-        except (OSError, subprocess.TimeoutExpired) as erro:
-            self._avisar(f"O conferidor falhou: {erro}")
+        except (OSError, subprocess.TimeoutExpired) as error:
+            self._toast(f"O conferidor falhou: {error}")
             return
 
-        self._diagnosticos = [
-            Diagnostic("error" if "ERRO" in linha else "warning", linha.strip())
-            for linha in saida.stdout.splitlines()
-            if linha.strip() and ("ERRO" in linha or "aviso" in linha)
+        # The checker's output is Portuguese: "ERRO" and "aviso" are its words.
+        self._diagnostics = [
+            Diagnostic("error" if "ERRO" in line else "warning", line.strip())
+            for line in output.stdout.splitlines()
+            if line.strip() and ("ERRO" in line or "aviso" in line)
         ] or [Diagnostic("warning", "conferidor: nada a resolver")]
-        self._preencher_diagnosticos()
+        self._fill_diagnostics()
 
-    # ------------------------------------------------------------ sumário
+    # ------------------------------------------------------------ outline
 
-    def _reconstruir_sumario(self) -> None:
-        while (linha := self._sumario.get_first_child()) is not None:
-            self._sumario.remove(linha)
+    def _rebuild_outline(self) -> None:
+        while (row := self._outline.get_first_child()) is not None:
+            self._outline.remove(row)
 
-        texto = self._editor.text
-        for casamento in SECAO.finditer(texto):
-            comando, titulo = casamento.group(1), casamento.group(2)
-            numero = texto.count("\n", 0, casamento.start()) + 1
-            limpo = re.sub(r"\\[A-Za-z]+\*?|[{}]", "", titulo)
-            rotulo = Gtk.Label(label=" ".join(limpo.split()))
-            rotulo.set_xalign(0.0)
-            rotulo.set_ellipsize(3)  # PANGO_ELLIPSIZE_END
-            rotulo.set_margin_start(8 + 14 * NIVEL.get(comando, 0))
-            rotulo.set_margin_end(8)
-            rotulo.set_margin_top(4)
-            rotulo.set_margin_bottom(4)
-            if NIVEL.get(comando, 0) == 0:
-                rotulo.add_css_class("heading")
-            linha = Gtk.ListBoxRow()
-            linha.set_child(rotulo)
-            linha.numero_da_linha = numero
-            self._sumario.append(linha)
+        text = self._editor.text
+        for match in SECTION.finditer(text):
+            command, title = match.group(1), match.group(2)
+            number = text.count("\n", 0, match.start()) + 1
+            clean = re.sub(r"\\[A-Za-z]+\*?|[{}]", "", title)
+            label = Gtk.Label(label=" ".join(clean.split()))
+            label.set_xalign(0.0)
+            label.set_ellipsize(3)  # PANGO_ELLIPSIZE_END
+            label.set_margin_start(8 + 14 * LEVEL.get(command, 0))
+            label.set_margin_end(8)
+            label.set_margin_top(4)
+            label.set_margin_bottom(4)
+            if LEVEL.get(command, 0) == 0:
+                label.add_css_class("heading")
+            row = Gtk.ListBoxRow()
+            row.set_child(label)
+            row.line_number = number
+            self._outline.append(row)
 
-    def _ao_clicar_sumario(self, _lista, linha) -> None:
-        numero = getattr(linha, "numero_da_linha", None)
-        if numero:
-            self._editor.go_to_line(numero)
+    def _on_outline_activated(self, _list, row) -> None:
+        number = getattr(row, "line_number", None)
+        if number:
+            self._editor.go_to_line(number)
 
-    # ------------------------------------------------------------- busca
+    # ------------------------------------------------------------- search
 
-    def _focar_busca(self) -> None:
-        self._barra_busca.set_search_mode(True)
-        self._campo_busca.grab_focus()
+    def _focus_search(self) -> None:
+        self._search_bar.set_search_mode(True)
+        self._search_entry.grab_focus()
 
-    def _ao_buscar(self, campo) -> None:
-        self._busca.get_settings().set_search_text(campo.get_text() or None)
+    def _on_search(self, entry) -> None:
+        self._search.get_settings().set_search_text(entry.get_text() or None)
 
-    def _proxima_ocorrencia(self) -> None:
+    def _next_match(self) -> None:
         cursor = self._editor.buffer.get_iter_at_mark(self._editor.buffer.get_insert())
         cursor.forward_char()
-        deu, inicio, fim, _ = self._busca.forward(cursor)
-        if deu:
-            self._editor.buffer.select_range(inicio, fim)
-            self._editor.scroll_to_iter(inicio, 0.25, True, 0.0, 0.35)
+        found, start, end, _ = self._search.forward(cursor)
+        if found:
+            self._editor.buffer.select_range(start, end)
+            self._editor.scroll_to_iter(start, 0.25, True, 0.0, 0.35)
 
-    # ------------------------------------------------------------- estado
+    # ------------------------------------------------------------- status
 
-    def _ao_mudar_texto(self, _buffer) -> None:
-        self._documento.mark_dirty()
+    def _on_text_changed(self, _buffer) -> None:
+        self._document.mark_dirty()
 
-        if self._temporizador_sumario:
-            GLib.source_remove(self._temporizador_sumario)
-        self._temporizador_sumario = GLib.timeout_add(
-            600, self._tarefa_sumario
+        if self._outline_timer:
+            GLib.source_remove(self._outline_timer)
+        self._outline_timer = GLib.timeout_add(
+            600, self._outline_task
         )
 
-        if self._compilacao_continua and self._arquivo is not None:
-            if self._temporizador_compilacao:
-                GLib.source_remove(self._temporizador_compilacao)
-            self._temporizador_compilacao = GLib.timeout_add(
-                1400, self._tarefa_compilacao
+        if self._continuous_build and self._file is not None:
+            if self._build_timer:
+                GLib.source_remove(self._build_timer)
+            self._build_timer = GLib.timeout_add(
+                1400, self._build_task
             )
 
-    def _tarefa_sumario(self) -> bool:
-        self._temporizador_sumario = 0
-        self._reconstruir_sumario()
-        self._atualizar_contagem()
+    def _outline_task(self) -> bool:
+        self._outline_timer = 0
+        self._rebuild_outline()
+        self._update_word_count()
         self._keys.update(self._editor.text)
         return GLib.SOURCE_REMOVE
 
-    def _tarefa_compilacao(self) -> bool:
-        self._temporizador_compilacao = 0
-        self.previsualizar()
+    def _build_task(self) -> bool:
+        self._build_timer = 0
+        self.preview_build()
         return GLib.SOURCE_REMOVE
 
-    def _ao_mover_cursor(self, _editor, linha: int, coluna: int) -> None:
-        self._estado_posicao.set_label(f"{linha}:{coluna}")
+    def _on_cursor_moved(self, _editor, line: int, column: int) -> None:
+        self._status_position.set_label(f"{line}:{column}")
 
-    def _atualizar_contagem(self) -> None:
+    def _update_word_count(self) -> None:
         total = self._editor.count_words()
-        self._estado_palavras.set_label(f"{total} palavras")
+        self._status_words.set_label(f"{total} palavras")
 
-    def _atualizar_titulo(self) -> None:
-        self._botao_salvar.set_sensitive(self._sujo and self._arquivo is not None)
-        if self._arquivo is None:
-            self._titulo.set_title("Serifa")
-            self._titulo.set_subtitle("nenhum arquivo")
+    def _update_title(self) -> None:
+        self._save_button.set_sensitive(self._dirty and self._file is not None)
+        if self._file is None:
+            self._title.set_title("Serifa")
+            self._title.set_subtitle("nenhum arquivo")
             return
-        marca = " •" if self._sujo else ""
-        self._titulo.set_title(f"{self._arquivo.name}{marca}")
-        pasta = str(self._arquivo.parent).replace(str(Path.home()), "~")
-        self._titulo.set_subtitle(pasta)
+        mark = " •" if self._dirty else ""
+        self._title.set_title(f"{self._file.name}{mark}")
+        folder = str(self._file.parent).replace(str(Path.home()), "~")
+        self._title.set_subtitle(folder)
 
     # ------------------------------------------------------------- toggles
 
-    def _ao_alternar_vim(self, botao: Gtk.ToggleButton) -> None:
-        vim = self._editor.toggle_vim(botao.get_active())
+    def _on_vim_toggled(self, button: Gtk.ToggleButton) -> None:
+        vim = self._editor.toggle_vim(button.get_active())
         if vim is not None:
-            # O VimIMContext não expõe o modo atual em lugar nenhum: só tem
-            # command-bar-text (que traz "-- INSERT --", ":w", "/busca") e
-            # command-text (o comando em digitação, como "2d"). Mostrar os dois
-            # crus é o mais perto de um indicador de modo que dá para ter --
-            # e é melhor que o "-- modo vim --" fixo que estava aqui, que não
-            # dizia se você estava em normal ou em insert.
-            vim.bind_property("command-bar-text", self._estado_vim, "label")
-            vim.bind_property("command-text", self._estado_comando, "label")
-            self._estado_vim.set_label("")
-            self._aplicar_atalhos_de_formatacao(ligados=False)
-            botao.add_css_class("accent")
+            # VimIMContext exposes the current mode nowhere: all it has is
+            # command-bar-text (which carries "-- INSERT --", ":w", "/search")
+            # and command-text (the command being typed, like "2d"). Showing
+            # both raw is as close to a mode indicator as it gets -- and it
+            # beats the fixed "-- modo vim --" that used to be here, which did
+            # not say whether you were in normal or insert.
+            vim.bind_property("command-bar-text", self._status_vim, "label")
+            vim.bind_property("command-text", self._status_command, "label")
+            self._status_vim.set_label("")
+            self._apply_formatting_shortcuts(enabled=False)
+            button.add_css_class("accent")
         else:
-            self._estado_vim.set_label("")
-            self._estado_comando.set_label("")
-            self._aplicar_atalhos_de_formatacao(ligados=True)
-            botao.remove_css_class("accent")
+            self._status_vim.set_label("")
+            self._status_command.set_label("")
+            self._apply_formatting_shortcuts(enabled=True)
+            button.remove_css_class("accent")
         self._editor.grab_focus()
-        self._guardar_estado()
+        self._save_state()
 
-    def _alternar_vim(self) -> None:
-        self._botao_vim.set_active(not self._botao_vim.get_active())
+    def _toggle_vim(self) -> None:
+        self._vim_button.set_active(not self._vim_button.get_active())
 
-    def _alternar_preview(self) -> None:
-        visivel = self._preview.get_visible()
-        self._preview.set_visible(not visivel)
+    def _toggle_preview(self) -> None:
+        visible = self._preview.get_visible()
+        self._preview.set_visible(not visible)
 
-    def _alternar_sumario(self) -> None:
-        self._divisor_lateral.set_show_sidebar(
-            not self._divisor_lateral.get_show_sidebar()
+    def _toggle_outline(self) -> None:
+        self._sidebar_split.set_show_sidebar(
+            not self._sidebar_split.get_show_sidebar()
         )
 
-    def _alternar_continua(self) -> None:
-        self._compilacao_continua = not self._compilacao_continua
-        self._avisar(
+    def _toggle_continuous(self) -> None:
+        self._continuous_build = not self._continuous_build
+        self._toast(
             "Compilação contínua ligada"
-            if self._compilacao_continua
+            if self._continuous_build
             else "Compilação contínua desligada"
         )
-        self._guardar_estado()
+        self._save_state()
 
-    def _avisar(self, mensagem: str) -> None:
-        self._toasts.add_toast(Adw.Toast(title=mensagem, timeout=3))
+    def _toast(self, message: str) -> None:
+        # Not "_notify": GObject already has notify(), and shadowing it breaks
+        # property notification in ways that are hard to trace.
+        self._toasts.add_toast(Adw.Toast(title=message, timeout=3))
 
-    def _aplicar_atalhos_de_formatacao(self, ligados: bool) -> None:
-        """Com o vim ligado, Ctrl+B e Ctrl+I voltam a ser dele.
+    def _apply_formatting_shortcuts(self, enabled: bool) -> None:
+        """With vim on, Ctrl+B and Ctrl+I go back to being vim's.
 
-        Acelerador de janela é resolvido antes dos controladores do widget, ou
-        seja, venceria o vim sem nem avisar. Quem usa vim espera Ctrl+B como
-        página acima; os botões da barra continuam valendo de qualquer jeito.
+        A window accelerator is resolved before the widget's controllers, so
+        it would beat vim without so much as a warning. Vim users expect
+        Ctrl+B to mean page up; the toolbar buttons keep working either way.
         """
         app = self.get_application()
         if app is None:
             return
-        for nome, atalho in self.ATALHOS_DE_FORMATACAO.items():
-            app.set_accels_for_action(f"win.{nome}", [atalho] if ligados else [])
+        for name, accel in self.FORMATTING_SHORTCUTS.items():
+            app.set_accels_for_action(f"win.{name}", [accel] if enabled else [])
 
-    # ------------------------------------------------------------ fechamento
+    # ------------------------------------------------------------ closing
 
-    def _resolver_pendencias(self, seguir) -> bool:
-        """Pergunta antes de descartar alteração não gravada.
+    def _settle_pending(self, proceed) -> bool:
+        """Asks before throwing away unsaved changes.
 
-        Devolve True quando a ação foi adiada até a resposta, e False quando
-        não havia nada a resolver -- nesse caso quem chamou segue em frente.
+        Returns True when the action was deferred until the answer, and False
+        when there was nothing to settle -- in which case the caller goes
+        ahead.
 
-        Serve tanto ao fechamento quanto à troca de arquivo. Fechar já
-        perguntava; abrir outro arquivo substituía o buffer em silêncio, o que
-        é perda de dados e não incômodo.
+        Serves both closing and switching files. Closing already asked;
+        opening another file replaced the buffer silently, which is data loss,
+        not a nuisance.
         """
-        if not self._sujo or self._arquivo is None:
+        if not self._dirty or self._file is None:
             return False
 
-        dialogo = Adw.AlertDialog(
+        dialog = Adw.AlertDialog(
             heading="Salvar antes de continuar?",
-            body=f"As alterações em {self._arquivo.name} não foram gravadas.",
+            body=f"As alterações em {self._file.name} não foram gravadas.",
         )
-        dialogo.add_response("cancelar", "Cancelar")
-        dialogo.add_response("descartar", "Descartar")
-        dialogo.add_response("salvar", "Salvar")
-        dialogo.set_response_appearance("descartar", Adw.ResponseAppearance.DESTRUCTIVE)
-        dialogo.set_response_appearance("salvar", Adw.ResponseAppearance.SUGGESTED)
-        dialogo.set_default_response("salvar")
-        dialogo.set_close_response("cancelar")
-        dialogo.choose(
-            self, None, lambda d, r: self._ao_responder(d, r, seguir)
+        dialog.add_response("cancel", "Cancelar")
+        dialog.add_response("discard", "Descartar")
+        dialog.add_response("save", "Salvar")
+        dialog.set_response_appearance("discard", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_response_appearance("save", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("save")
+        dialog.set_close_response("cancel")
+        dialog.choose(
+            self, None, lambda d, r: self._on_response(d, r, proceed)
         )
         return True
 
-    def _ao_responder(self, dialogo, resultado, seguir) -> None:
+    def _on_response(self, dialog, result, proceed) -> None:
         try:
-            resposta = dialogo.choose_finish(resultado)
+            response = dialog.choose_finish(result)
         except GLib.Error:
             return
-        self._aplicar_resposta(resposta, seguir)
+        self._apply_response(response, proceed)
 
-    def _aplicar_resposta(self, resposta: str, seguir) -> None:
-        """A decisão em si, separada do diálogo para poder ser testada."""
-        if resposta == "cancelar":
+    def _apply_response(self, response: str, proceed) -> None:
+        """The decision itself, kept apart from the dialog so it can be tested."""
+        if response == "cancel":
             return
-        if resposta == "salvar" and not self._gravar():
+        if response == "save" and not self._write():
             return
-        self._documento.mark_clean()   # o próximo close-request passa direto
-        seguir()
+        self._document.mark_clean()   # the next close-request goes straight through
+        proceed()
 
-    def _ao_pedir_fechamento(self, *_args) -> bool:
-        return self._resolver_pendencias(self.close)
+    def _on_close_request(self, *_args) -> bool:
+        return self._settle_pending(self.close)
 
-    # -------------------------------------------------------- persistência
+    # -------------------------------------------------------- persistence
 
-    def _guardar_estado(self) -> None:
-        session.write(ESTADO, {
-            "arquivo": str(self._arquivo) if self._arquivo else None,
-            "vim": self._botao_vim.get_active(),
-            "continua": self._compilacao_continua,
-            "divisor": self._divisor.get_position(),
+    def _save_state(self) -> None:
+        # The keys stay in Portuguese: this file already exists on disk, and
+        # renaming them would make Serifa forget the session once.
+        session.write(STATE, {
+            "arquivo": str(self._file) if self._file else None,
+            "vim": self._vim_button.get_active(),
+            "continua": self._continuous_build,
+            "divisor": self._split.get_position(),
         })
 
-    def _restaurar_estado(self) -> None:
-        dados = session.read(ESTADO)
-        if not dados:
+    def _restore_state(self) -> None:
+        data = session.read(STATE)
+        if not data:
             return
-        if dados.get("vim"):
-            self._botao_vim.set_active(True)
-        self._compilacao_continua = dados.get("continua", True)
-        if posicao := dados.get("divisor"):
-            self._divisor.set_position(posicao)
-        if (caminho := dados.get("arquivo")) and Path(caminho).exists():
-            # Só restaura se nada tiver sido aberto nesse meio-tempo: a linha
-            # de comando (do_open) chega antes deste idle, e sem a guarda a
-            # sessão anterior sobrescrevia o arquivo pedido.
-            def restaurar() -> bool:
-                if self._arquivo is None:
-                    self.abrir(Path(caminho))
+        if data.get("vim"):
+            self._vim_button.set_active(True)
+        self._continuous_build = data.get("continua", True)
+        if position := data.get("divisor"):
+            self._split.set_position(position)
+        if (path := data.get("arquivo")) and Path(path).exists():
+            # Only restores if nothing was opened in the meantime: the command
+            # line (do_open) arrives before this idle, and without the guard
+            # the previous session overwrote the file that was asked for.
+            def restore() -> bool:
+                if self._file is None:
+                    self.open_file(Path(path))
                 return GLib.SOURCE_REMOVE
 
-            GLib.idle_add(restaurar)
+            GLib.idle_add(restore)

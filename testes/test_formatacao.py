@@ -10,13 +10,13 @@ class TestFormatacao(CasoGrafico):
         self.buffer.set_text("palavra solta")
         self.buffer.select_range(self.buffer.get_iter_at_offset(0),
                                  self.buffer.get_iter_at_offset(7))
-        self.janela.formatar("textbf")
+        self.janela.format_text("textbf")
         self.assertEqual(self.texto, "\\textbf{palavra} solta")
 
     def test_sem_selecao_abre_as_chaves_com_o_cursor_dentro(self):
         self.buffer.set_text("abc")
         self.buffer.place_cursor(self.buffer.get_end_iter())
-        self.janela.formatar("textit")
+        self.janela.format_text("textit")
         self.assertEqual(self.texto, "abc\\textit{}")
         self.assertEqual(self.buffer.get_property("cursor-position"), 11)
 
@@ -24,13 +24,13 @@ class TestFormatacao(CasoGrafico):
         # Inserido de uma vez, os pares automáticos não reagem -- eles só
         # olham caractere solto.
         self.buffer.set_text("")
-        self.janela.formatar("enquote")
+        self.janela.format_text("enquote")
         self.assertEqual(self.texto, "\\enquote{}")
 
     def test_todos_os_formatos_produzem_o_comando(self):
-        for nome, comando, _icone, _rotulo in self.janela.FORMATOS:
+        for nome, comando, _icone, _rotulo in self.janela.FORMATS:
             self.buffer.set_text("")
-            self.janela.formatar(comando)
+            self.janela.format_text(comando)
             self.assertEqual(self.texto, f"\\{comando}{{}}", nome)
 
 
@@ -39,24 +39,24 @@ class TestAceleradores(CasoGrafico):
         return self.janela.get_application().get_accels_for_action(f"win.{nome}")
 
     def test_ctrl_b_e_negrito_com_vim_desligado(self):
-        self.assertEqual(self.acel("negrito"), ["<Control>b"])
+        self.assertEqual(self.acel("bold"), ["<Control>b"])
 
     def test_compilar_nao_usa_mais_ctrl_b(self):
-        self.assertNotIn("<Control>b", self.acel("compilar"))
-        self.assertIn("F5", self.acel("compilar"))
+        self.assertNotIn("<Control>b", self.acel("build"))
+        self.assertIn("F5", self.acel("build"))
 
     def test_vim_ligado_devolve_ctrl_b_e_ctrl_i(self):
         # Acelerador de janela é resolvido antes dos controladores do widget
         # e venceria o vim sem avisar; quem usa vim espera Ctrl+B como
         # página acima.
-        self.janela._botao_vim.set_active(True)
-        self.assertEqual(self.acel("negrito"), [])
-        self.assertEqual(self.acel("italico"), [])
+        self.janela._vim_button.set_active(True)
+        self.assertEqual(self.acel("bold"), [])
+        self.assertEqual(self.acel("italic"), [])
 
     def test_desligar_o_vim_devolve_os_atalhos(self):
-        self.janela._botao_vim.set_active(True)
-        self.janela._botao_vim.set_active(False)
-        self.assertEqual(self.acel("negrito"), ["<Control>b"])
+        self.janela._vim_button.set_active(True)
+        self.janela._vim_button.set_active(False)
+        self.assertEqual(self.acel("bold"), ["<Control>b"])
 
 
 class TestCompletacaoPorContexto(CasoGrafico):
@@ -66,7 +66,7 @@ class TestCompletacaoPorContexto(CasoGrafico):
             "@book{einstein_infeld,\n  title = {A Evolução da Física},\n}\n",
             encoding="utf-8")
         self.alvo = self.arquivo("texto.tex", "\\label{sec:um}\nTexto.\n")
-        self.janela.abrir(self.alvo)
+        self.janela.open_file(self.alvo)
         bombear(200)
 
     def digitar_no_fim(self, sufixo):

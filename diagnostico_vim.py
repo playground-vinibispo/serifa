@@ -54,12 +54,12 @@ def montar_janela_completa(app):
     import pathlib
     sys.path.insert(0, str(pathlib.Path(__file__).parent))
 
-    from serifa.window import Janela
+    from serifa.window import Window
 
-    janela = Janela(application=app)
+    janela = Window(application=app)
     janela.present()
     editor = janela._editor
-    janela._botao_vim.set_active(True)
+    janela._vim_button.set_active(True)
     editor.grab_focus()
     detector(editor, lambda t: print(t, flush=True))
 

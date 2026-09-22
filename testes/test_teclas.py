@@ -18,7 +18,7 @@ from testes.apoio import CasoGrafico, ate, bombear
 class TestTextObjects(CasoGrafico):
     def setUp(self):
         super().setUp()
-        self.janela._botao_vim.set_active(True)
+        self.janela._vim_button.set_active(True)
         self.editor.grab_focus()
         # Esperar a condição, não um tempo fixo: o foco assenta em ritmo
         # diferente conforme o compositor.
@@ -55,9 +55,9 @@ class TestTextObjects(CasoGrafico):
         # zerava a máquina de estados.
         self.preparar(r"\textbf{palavra} fim", "palavra")
         keyval, estado = Gdk.unicode_to_keyval(ord("v")), Gdk.ModifierType(0)
-        self.janela._ao_teclar(None, keyval, 0, estado)
-        self.janela._ao_teclar(None, Gdk.unicode_to_keyval(ord("i")), 0, estado)
-        self.janela._ao_teclar(None, Gdk.KEY_Shift_L, 0, estado)
+        self.janela._on_key_pressed(None, keyval, 0, estado)
+        self.janela._on_key_pressed(None, Gdk.unicode_to_keyval(ord("i")), 0, estado)
+        self.janela._on_key_pressed(None, Gdk.KEY_Shift_L, 0, estado)
         self.assertEqual(self.editor._sequence, ["v", "i"],
                          "o Shift zerou a sequência")
 
@@ -83,11 +83,12 @@ class TestTextObjects(CasoGrafico):
 
 class TestFocoDaJanela(CasoGrafico):
     def test_sem_foco_no_editor_a_janela_nao_trata(self):
-        self.janela._botao_vim.set_active(True)
-        self.janela._campo_busca.grab_focus()
+        self.janela._vim_button.set_active(True)
+        self.janela._search_entry.grab_focus()
         ate(lambda: not self.editor.is_focus(), 2000)
         keyval = Gdk.unicode_to_keyval(ord("v"))
-        self.assertFalse(self.janela._ao_teclar(None, keyval, 0, Gdk.ModifierType(0)))
+        consumida = self.janela._on_key_pressed(None, keyval, 0, Gdk.ModifierType(0))
+        self.assertFalse(consumida)
 
 
 if __name__ == "__main__":

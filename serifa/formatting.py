@@ -19,18 +19,18 @@ from gi.repository import Gtk
 
 # (action, LaTeX command, header icon or None, menu label)
 FORMATS: list[tuple[str, str, str | None, str]] = [
-    ("negrito", "textbf", "format-text-bold-symbolic", "Negrito"),
-    ("italico", "textit", "format-text-italic-symbolic", "Itálico"),
-    ("sublinhado", "underline", "format-text-underline-symbolic", "Sublinhado"),
-    ("monoespaco", "texttt", None, "Monoespaçado"),
-    ("enfase", "emph", None, "Ênfase"),
-    ("citacao", "enquote", None, "Entre aspas"),
-    ("nota", "footnote", None, "Nota de rodapé"),
+    ("bold", "textbf", "format-text-bold-symbolic", "Negrito"),
+    ("italic", "textit", "format-text-italic-symbolic", "Itálico"),
+    ("underline", "underline", "format-text-underline-symbolic", "Sublinhado"),
+    ("monospace", "texttt", None, "Monoespaçado"),
+    ("emphasis", "emph", None, "Ênfase"),
+    ("quote", "enquote", None, "Entre aspas"),
+    ("footnote", "footnote", None, "Nota de rodapé"),
 ]
 
 # Only the two everybody expects get a shortcut; the rest stay in the menu, so
 # as not to trample more vim keys than necessary.
-SHORTCUTS = {"negrito": "<Control>b", "italico": "<Control>i"}
+SHORTCUTS = {"bold": "<Control>b", "italic": "<Control>i"}
 
 
 def wrap(buffer: Gtk.TextBuffer, command: str) -> None:

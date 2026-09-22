@@ -24,7 +24,7 @@ class TestGravacao(CasoGrafico):
         super().setUp()
         self.alvo = self.arquivo("texto.tex", DOCUMENTO)
         self.original = self.alvo.read_text(encoding="utf-8")
-        self.janela.abrir(self.alvo)
+        self.janela.open_file(self.alvo)
         bombear(200)
 
     def test_abrir_carrega_o_texto(self):
@@ -34,11 +34,11 @@ class TestGravacao(CasoGrafico):
         self.digitar("mexido ")
         bombear(200)
         self.assertEqual(self.alvo.read_text(encoding="utf-8"), self.original)
-        self.assertTrue(self.janela._sujo)
+        self.assertTrue(self.janela._dirty)
 
     def test_previa_nao_grava(self):
         self.digitar("mexido ")
-        self.janela.previsualizar()
+        self.janela.preview_build()
         bombear(400)
         self.assertEqual(self.alvo.read_text(encoding="utf-8"), self.original)
 
@@ -46,7 +46,7 @@ class TestGravacao(CasoGrafico):
     def test_previa_compila_na_sombra_fora_do_projeto(self):
         sombra = Builder.shadow_folder(self.alvo.parent)
         self.assertNotIn(str(self.caixa), str(sombra))
-        self.janela.previsualizar()
+        self.janela.preview_build()
         self.assertTrue(ate(lambda: (sombra / "previa.tex").exists(), 4000))
         # nenhum resíduo de compilação na pasta do usuário
         self.assertEqual(sorted(p.name for p in self.caixa.iterdir()),
@@ -54,29 +54,29 @@ class TestGravacao(CasoGrafico):
 
     def test_salvar_grava_e_limpa_o_sujo(self):
         self.digitar("mexido ")
-        self.janela._gravar()
+        self.janela._write()
         self.assertIn("mexido", self.alvo.read_text(encoding="utf-8"))
-        self.assertFalse(self.janela._sujo)
+        self.assertFalse(self.janela._dirty)
 
     def test_fechar_sujo_e_bloqueado(self):
         self.digitar("mexido ")
-        self.assertTrue(self.janela._ao_pedir_fechamento())
+        self.assertTrue(self.janela._on_close_request())
 
     def test_fechar_limpo_passa_direto(self):
-        self.assertFalse(self.janela._ao_pedir_fechamento())
+        self.assertFalse(self.janela._on_close_request())
 
     def test_botao_salvar_reflete_o_estado(self):
-        self.assertFalse(self.janela._botao_salvar.get_sensitive())
+        self.assertFalse(self.janela._save_button.get_sensitive())
         self.digitar("x")
         bombear(100)
-        self.assertTrue(self.janela._botao_salvar.get_sensitive())
+        self.assertTrue(self.janela._save_button.get_sensitive())
 
 
 class TestVigia(CasoGrafico):
     def setUp(self):
         super().setUp()
         self.alvo = self.arquivo("texto.tex", "linha um\nlinha dois\n")
-        self.janela.abrir(self.alvo)
+        self.janela.open_file(self.alvo)
         bombear(300)
 
     def test_buffer_limpo_recarrega_sozinho(self):
@@ -96,21 +96,21 @@ class TestVigia(CasoGrafico):
         bombear(100)
         self.alvo.write_text("DO DISCO\n", encoding="utf-8")
         self.assertTrue(ate(self._banner_visivel, 4000))
-        self.janela._recarregar()
+        self.janela._reload()
         self.assertTrue(self.texto.startswith("DO DISCO"))
-        self.assertFalse(self.janela._sujo)
+        self.assertFalse(self.janela._dirty)
 
     def test_gravar_pelo_editor_nao_acende_aviso(self):
         # A própria gravação dispara o vigia; o conteúdo é comparado antes de
         # alarmar, o que é mais robusto que um sinalizador de "ignore o
         # próximo evento" -- o monitor emite mais de um.
         self.digitar("meu texto ")
-        self.janela._gravar()
+        self.janela._write()
         bombear(1200)
         self.assertFalse(self._banner_visivel())
 
     def _banner_visivel(self):
-        return self.janela._aviso.get_revealed()
+        return self.janela._banner.get_revealed()
 
 
 if __name__ == "__main__":
@@ -128,49 +128,49 @@ class TestGuardaAoTrocarDeArquivo(CasoGrafico):
         super().setUp()
         self.um = self.arquivo("um.tex", "conteudo do um\n")
         self.dois = self.arquivo("dois.tex", "conteudo do dois\n")
-        self.janela.abrir(self.um)
+        self.janela.open_file(self.um)
         bombear(200)
 
     def test_limpo_troca_direto(self):
-        self.assertFalse(self.janela._resolver_pendencias(lambda: None))
+        self.assertFalse(self.janela._settle_pending(lambda: None))
 
     def test_sujo_adia_a_troca(self):
         self.digitar("mexido ")
         seguiu = []
-        self.assertTrue(self.janela._resolver_pendencias(lambda: seguiu.append(1)))
+        self.assertTrue(self.janela._settle_pending(lambda: seguiu.append(1)))
         self.assertEqual(seguiu, [], "trocou antes de perguntar")
 
     def test_cancelar_nao_segue_e_preserva(self):
         self.digitar("mexido ")
         seguiu = []
-        self.janela._aplicar_resposta("cancelar", lambda: seguiu.append(1))
+        self.janela._apply_response("cancel", lambda: seguiu.append(1))
         self.assertEqual(seguiu, [])
         self.assertIn("mexido", self.texto)
-        self.assertTrue(self.janela._sujo)
+        self.assertTrue(self.janela._dirty)
 
     def test_descartar_segue_sem_gravar(self):
         self.digitar("mexido ")
         seguiu = []
-        self.janela._aplicar_resposta("descartar", lambda: seguiu.append(1))
+        self.janela._apply_response("discard", lambda: seguiu.append(1))
         self.assertEqual(seguiu, [1])
         self.assertNotIn("mexido", self.um.read_text(encoding="utf-8"))
-        self.assertFalse(self.janela._sujo)
+        self.assertFalse(self.janela._dirty)
 
     def test_salvar_grava_e_segue(self):
         self.digitar("mexido ")
         seguiu = []
-        self.janela._aplicar_resposta("salvar", lambda: seguiu.append(1))
+        self.janela._apply_response("save", lambda: seguiu.append(1))
         self.assertEqual(seguiu, [1])
         self.assertIn("mexido", self.um.read_text(encoding="utf-8"))
-        self.assertFalse(self.janela._sujo)
+        self.assertFalse(self.janela._dirty)
 
     def test_abrir_outro_depois_de_descartar(self):
         self.digitar("mexido ")
-        self.janela._aplicar_resposta("descartar", lambda: self.janela.abrir(self.dois))
+        self.janela._apply_response("discard", lambda: self.janela.open_file(self.dois))
         bombear(150)
         self.assertIn("conteudo do dois", self.texto)
-        self.assertEqual(self.janela._arquivo, self.dois)
+        self.assertEqual(self.janela._file, self.dois)
 
     def test_fechar_usa_a_mesma_guarda(self):
         self.digitar("mexido ")
-        self.assertTrue(self.janela._ao_pedir_fechamento())
+        self.assertTrue(self.janela._on_close_request())

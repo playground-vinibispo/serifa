@@ -1,4 +1,4 @@
-"""Ponto de entrada da aplicação."""
+"""Application entry point."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ gi.require_version("GtkSource", "5")
 
 from gi.repository import Adw, Gio, GtkSource
 
-from .window import Janela
+from .window import Window
 
 
 class Serifa(Adw.Application):
@@ -22,28 +22,28 @@ class Serifa(Adw.Application):
             application_id="br.ufmg.vinibispo.Serifa",
             flags=Gio.ApplicationFlags.HANDLES_OPEN,
         )
-        self._janela: Janela | None = None
+        self._window: Window | None = None
 
     def do_startup(self) -> None:
         Adw.Application.do_startup(self)
         GtkSource.init()
 
     def do_activate(self) -> None:
-        self._garantir_janela().present()
+        self._ensure_window().present()
 
-    def do_open(self, arquivos, n, hint) -> None:
-        janela = self._garantir_janela()
-        janela.present()
-        for arquivo in arquivos:
-            caminho = arquivo.get_path()
-            if caminho:
-                janela.abrir(Path(caminho))
+    def do_open(self, files, n, hint) -> None:
+        window = self._ensure_window()
+        window.present()
+        for file in files:
+            path = file.get_path()
+            if path:
+                window.open_file(Path(path))
                 break
 
-    def _garantir_janela(self) -> Janela:
-        if self._janela is None:
-            self._janela = Janela(application=self)
-        return self._janela
+    def _ensure_window(self) -> Window:
+        if self._window is None:
+            self._window = Window(application=self)
+        return self._window
 
 
 def main() -> int:
