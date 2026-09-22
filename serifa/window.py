@@ -16,10 +16,10 @@ from gi.repository import Adw, Gio, GLib, GObject, Gtk, GtkSource
 
 from . import session
 from .appearance import install_css
-from .build import Compilador, Diagnostico
+from .build import Builder, Diagnostic
 from .complete import FonteDeChaves, preparar_snippets
 from .contexto import Acervo, Popup
-from .documento import Documento
+from .document import Document
 from .editor import Editor
 from .formatting import FORMATS, SHORTCUTS, wrap
 from .preview import Preview
@@ -48,11 +48,11 @@ class Janela(Adw.ApplicationWindow):
         self._temporizador_compilacao = 0
         self._temporizador_sumario = 0
         self._compilacao_continua = True
-        self._diagnosticos: list[Diagnostico] = []
+        self._diagnosticos: list[Diagnostic] = []
 
-        self._compilador = Compilador()
-        self._compilador.connect("comecou", self._ao_comecar_compilacao)
-        self._compilador.connect("terminou", self._ao_terminar_compilacao)
+        self._compilador = Builder()
+        self._compilador.connect("started", self._ao_comecar_compilacao)
+        self._compilador.connect("finished", self._ao_terminar_compilacao)
 
         self._montar()
         self._instalar_acoes()
@@ -77,11 +77,11 @@ class Janela(Adw.ApplicationWindow):
 
     @property
     def _arquivo(self) -> Path | None:
-        return self._documento.caminho
+        return self._documento.path
 
     @property
     def _sujo(self) -> bool:
-        return self._documento.sujo
+        return self._documento.dirty
 
     # ---------------------------------------------------------------- UI
 
@@ -89,11 +89,11 @@ class Janela(Adw.ApplicationWindow):
         install_css()
         self._editor = Editor()
         self.buffer = self._editor.buffer
-        self._documento = Documento(self.buffer)
-        self._documento.connect("sujeira-mudou", self._ao_mudar_sujeira)
-        self._documento.connect("recarregado", self._ao_recarregar)
-        self._documento.connect("conflito", self._ao_conflito)
-        self._documento.connect("falhou", lambda _d, m: self._avisar(m))
+        self._documento = Document(self.buffer)
+        self._documento.connect("dirty-changed", self._ao_mudar_sujeira)
+        self._documento.connect("reloaded", self._ao_recarregar)
+        self._documento.connect("conflict", self._ao_conflito)
+        self._documento.connect("failed", lambda _d, m: self._avisar(m))
         self._editor.buffer.connect("changed", self._ao_mudar_texto)
         self._editor.connect("cursor-movido", self._ao_mover_cursor)
 
@@ -379,10 +379,10 @@ class Janela(Adw.ApplicationWindow):
             self.abrir(caminho)
 
     def abrir(self, caminho: Path) -> None:
-        if not self._documento.abrir(caminho):
+        if not self._documento.open_file(caminho):
             return
 
-        texto = self._documento.texto
+        texto = self._documento.text
         self._popup.reiniciar()
         self._chaves.definir_pasta(caminho.parent)
         self._acervo.definir_pasta(caminho.parent)
@@ -391,7 +391,7 @@ class Janela(Adw.ApplicationWindow):
         self._reconstruir_sumario()
         self._atualizar_contagem()
 
-        pdf = Compilador._pdf_de(caminho, caminho.parent)
+        pdf = Builder._pdf_for(caminho, caminho.parent)
         if pdf.exists():
             self._preview.carregar(pdf)
         # O Gtk.FileDialog é modal e leva o foco embora; sem devolvê-lo aqui,
@@ -405,7 +405,7 @@ class Janela(Adw.ApplicationWindow):
             return False
         if not self._gravar():
             return False
-        self._compilador.compilar(self._arquivo)
+        self._compilador.build(self._arquivo)
         return True
 
     def salvar_como(self) -> None:
@@ -421,7 +421,7 @@ class Janela(Adw.ApplicationWindow):
         except GLib.Error:
             return
         if arquivo is not None:
-            self._documento.definir_caminho(Path(arquivo.get_path()))
+            self._documento.set_path(Path(arquivo.get_path()))
             self._chaves.definir_pasta(self._arquivo.parent)
             self._acervo.definir_pasta(self._arquivo.parent)
             self.salvar()
@@ -437,7 +437,7 @@ class Janela(Adw.ApplicationWindow):
         self._aviso.set_revealed(False)
         self._editor.scroll_to_mark(self.buffer.get_insert(), 0.25, True, 0.0, 0.35)
         self._reconstruir_sumario()
-        self._avisar(f"{self._documento.nome} recarregado do disco")
+        self._avisar(f"{self._documento.name} recarregado do disco")
 
     def _ao_mudar_sujeira(self, _documento, sujo: bool) -> None:
         if not sujo:
@@ -445,7 +445,7 @@ class Janela(Adw.ApplicationWindow):
         self._atualizar_titulo()
 
     def _recarregar(self) -> None:
-        self._documento.recarregar()
+        self._documento.reload()
 
     # ----------------------------------------------------- compilação
 
@@ -460,16 +460,16 @@ class Janela(Adw.ApplicationWindow):
             return
         if self._sujo and not self._gravar():
             return
-        self._compilador.compilar(self._arquivo)
+        self._compilador.build(self._arquivo)
 
     def previsualizar(self) -> None:
         """A contínua: compila o buffer sem encostar no arquivo do usuário."""
         if self._arquivo is None:
             return
-        self._compilador.compilar_previa(self._editor.texto, self._arquivo)
+        self._compilador.build_preview(self._editor.texto, self._arquivo)
 
     def _gravar(self) -> bool:
-        return self._documento.gravar()
+        return self._documento.save()
 
     def _ao_comecar_compilacao(self, _compilador, previa: bool) -> None:
         self._estado_compilacao.set_label("prévia…" if previa else "compilando…")
@@ -484,7 +484,7 @@ class Janela(Adw.ApplicationWindow):
         if pdf:
             self._preview.carregar(pdf)
 
-        erros = sum(1 for d in self._diagnosticos if d.severidade == "erro")
+        erros = sum(1 for d in self._diagnosticos if d.severity == "error")
         avisos = len(self._diagnosticos) - erros
         if sucesso:
             paginas = self._preview.paginas
@@ -505,10 +505,10 @@ class Janela(Adw.ApplicationWindow):
             self._lista_diagnosticos.remove(linha)
 
         for diagnostico in self._diagnosticos[:60]:
-            linha = Adw.ActionRow(title=GLib.markup_escape_text(diagnostico.resumo))
-            linha.add_prefix(Gtk.Image.new_from_icon_name(diagnostico.icone))
+            linha = Adw.ActionRow(title=GLib.markup_escape_text(diagnostico.summary))
+            linha.add_prefix(Gtk.Image.new_from_icon_name(diagnostico.icon))
             linha.diagnostico = diagnostico
-            if diagnostico.linha:
+            if diagnostico.line:
                 linha.set_activatable(True)
             self._lista_diagnosticos.append(linha)
 
@@ -516,8 +516,8 @@ class Janela(Adw.ApplicationWindow):
 
     def _ao_clicar_diagnostico(self, _lista, linha) -> None:
         diagnostico = getattr(linha, "diagnostico", None)
-        if diagnostico and diagnostico.linha:
-            self._editor.ir_para_linha(diagnostico.linha)
+        if diagnostico and diagnostico.line:
+            self._editor.ir_para_linha(diagnostico.line)
 
     # ------------------------------------------------------------ formatação
 
@@ -558,10 +558,10 @@ class Janela(Adw.ApplicationWindow):
             return
 
         self._diagnosticos = [
-            Diagnostico("erro" if "ERRO" in linha else "aviso", linha.strip())
+            Diagnostic("error" if "ERRO" in linha else "warning", linha.strip())
             for linha in saida.stdout.splitlines()
             if linha.strip() and ("ERRO" in linha or "aviso" in linha)
-        ] or [Diagnostico("aviso", "conferidor: nada a resolver")]
+        ] or [Diagnostic("warning", "conferidor: nada a resolver")]
         self._preencher_diagnosticos()
 
     # ------------------------------------------------------------ sumário
@@ -614,7 +614,7 @@ class Janela(Adw.ApplicationWindow):
     # ------------------------------------------------------------- estado
 
     def _ao_mudar_texto(self, _buffer) -> None:
-        self._documento.sujar()
+        self._documento.mark_dirty()
 
         if self._temporizador_sumario:
             GLib.source_remove(self._temporizador_sumario)
@@ -764,7 +764,7 @@ class Janela(Adw.ApplicationWindow):
             return
         if resposta == "salvar" and not self._gravar():
             return
-        self._documento._limpar()   # o próximo close-request passa direto
+        self._documento.mark_clean()   # o próximo close-request passa direto
         seguir()
 
     def _ao_pedir_fechamento(self, *_args) -> bool:

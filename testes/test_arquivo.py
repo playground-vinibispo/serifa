@@ -8,7 +8,7 @@ compilação contínua.
 import shutil
 import unittest
 
-from serifa.build import Compilador
+from serifa.build import Builder
 from testes.apoio import CasoGrafico, ate, bombear
 
 DOCUMENTO = (
@@ -44,7 +44,7 @@ class TestGravacao(CasoGrafico):
 
     @unittest.skipUnless(shutil.which("latexmk"), "latexmk não instalado")
     def test_previa_compila_na_sombra_fora_do_projeto(self):
-        sombra = Compilador.pasta_da_sombra(self.alvo.parent)
+        sombra = Builder.shadow_folder(self.alvo.parent)
         self.assertNotIn(str(self.caixa), str(sombra))
         self.janela.previsualizar()
         self.assertTrue(ate(lambda: (sombra / "previa.tex").exists(), 4000))
