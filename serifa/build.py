@@ -1,18 +1,19 @@
-r"""Compilação assíncrona e leitura do log do LaTeX.
+r"""Asynchronous compilation and reading of the LaTeX log.
 
-Há dois modos, e a diferença entre eles é o que cada um escreve em disco.
+There are two modes, and what tells them apart is what each one writes to disk.
 
-- **Compilação** (Ctrl+B, Ctrl+S) grava o seu .tex e compila ele mesmo, pelo
-  scripts/compilar.sh do projeto quando existe.
-- **Prévia** (a contínua, enquanto se digita) não encosta no seu arquivo:
-  despeja o buffer num arquivo sombra dentro do cache e compila de lá, com o
-  diretório de trabalho na pasta do texto. É esse detalhe que faz
-  ``\input{../../preambulo.tex}`` continuar resolvendo, já que o TeX resolve
-  caminho relativo contra o diretório de trabalho, não contra o arquivo.
+- **Build** (Ctrl+B, Ctrl+S) writes your .tex and compiles that file, through
+  the project's scripts/compilar.sh when there is one.
+- **Preview** (the continuous one, while you type) never touches your file: it
+  dumps the buffer into a shadow file inside the cache and compiles from
+  there, with the working directory set to the text's own folder. That last
+  detail is what keeps ``\input{../../preambulo.tex}`` resolving, since TeX
+  resolves relative paths against the working directory, not against the
+  input file.
 
-O processo roda por Gio.Subprocess para a janela não congelar durante os
-segundos do latexmk. O log é lido do arquivo, não da saída do terminal, porque
-no terminal o TeX quebra as mensagens em 79 colunas.
+The process runs through Gio.Subprocess so the window does not freeze during
+latexmk's few seconds. The log is read from the file rather than from the
+terminal output, because in the terminal TeX wraps messages at 79 columns.
 """
 
 from __future__ import annotations
@@ -28,242 +29,240 @@ from gi.repository import Gio, GLib, GObject
 
 
 @dataclass(frozen=True)
-class Diagnostico:
-    """Um erro ou aviso do LaTeX, já com arquivo e linha quando dá para saber."""
+class Diagnostic:
+    """A LaTeX error or warning, with file and line when they can be known."""
 
-    severidade: str  # "erro" | "aviso"
-    mensagem: str
-    arquivo: str | None = None
-    linha: int | None = None
+    severity: str  # "error" | "warning"
+    message: str
+    file: str | None = None
+    line: int | None = None
 
     @property
-    def icone(self) -> str:
-        if self.severidade == "erro":
+    def icon(self) -> str:
+        if self.severity == "error":
             return "dialog-error-symbolic"
         return "dialog-warning-symbolic"
 
     @property
-    def resumo(self) -> str:
-        onde = ""
-        if self.arquivo:
-            onde = f"{Path(self.arquivo).name}"
-            if self.linha:
-                onde += f":{self.linha}"
-            onde += " — "
-        return f"{onde}{self.mensagem}"
+    def summary(self) -> str:
+        where = ""
+        if self.file:
+            where = f"{Path(self.file).name}"
+            if self.line:
+                where += f":{self.line}"
+            where += " — "
+        return f"{where}{self.message}"
 
 
-# "! Undefined control sequence." e amigos.
-ERRO = re.compile(r"^! (.+)$", re.MULTILINE)
-# "l.23 \foo" -- a linha que o TeX reporta logo depois do erro.
-LINHA_DO_ERRO = re.compile(r"^l\.(\d+)", re.MULTILINE)
-AVISO = re.compile(
+# "! Undefined control sequence." and friends.
+ERROR = re.compile(r"^! (.+)$", re.MULTILINE)
+# "l.23 \foo" -- the line TeX reports right after the error.
+ERROR_LINE = re.compile(r"^l\.(\d+)", re.MULTILINE)
+WARNING = re.compile(
     r"^(?:LaTeX|Package|Class)(?: (\S+))? Warning: (.+)$", re.MULTILINE
 )
-# "on input line 12" aparece no MEIO da mensagem tanto quanto no fim --
-# "Reference `x' on input line 12 undefined." é a forma mais comum. Procurar
-# só no fim perdia o número na maioria dos avisos.
-LINHA_DE_ENTRADA = re.compile(r"on input line (\d+)")
+# "on input line 12" shows up mid-message as often as at the end --
+# "Reference `x' on input line 12 undefined." is the commonest shape. Looking
+# only at the end lost the number in most warnings.
+INPUT_LINE = re.compile(r"on input line (\d+)")
 
-# O TeX corta a saída em max_print_line, 79 por padrão, sem recuar a
-# continuação. É o comprimento exato que diz "continua na próxima", e não a
-# indentação -- a primeira tentativa aqui usava indentação e não juntava nada.
-LARGURA_DO_TEX = 79
-# "(./arquivo.tex" -- a pilha de arquivos que o TeX abre.
-ABRE_ARQUIVO = re.compile(r"\((\.{0,2}/?[^()\s]*\.tex)")
+# TeX cuts its output at max_print_line, 79 by default, without indenting the
+# continuation. The exact length is what says "continues on the next line",
+# not the indentation -- the first attempt here keyed on indentation and
+# joined nothing.
+TEX_WIDTH = 79
+
+# "(./file.tex" -- the stack of files TeX opens.
+OPENS_FILE = re.compile(r"\((\.{0,2}/?[^()\s]*\.tex)")
 
 
-def _desdobrar(bruto: str) -> str:
-    """Refaz as linhas que o TeX cortou em 79 colunas.
+def _unwrap(raw: str) -> str:
+    """Rebuild the lines TeX cut at 79 columns.
 
-    Decidir pelo comprimento da linha ORIGINAL, e não pelo da linha já
-    juntada: uma mensagem quebrada em três pedaços tem os dois primeiros com
-    79 caracteres, e olhar para o acumulado faria o terceiro ficar de fora.
+    Decided by the length of the ORIGINAL line, not of the already-joined one:
+    a message broken into three pieces has 79 characters in the first two, and
+    looking at the accumulated length would leave the third one out.
     """
-    juntadas: list[str] = []
-    continuar = False
-    for linha in bruto.split("\n"):
-        if continuar and juntadas:
-            juntadas[-1] += linha
+    joined: list[str] = []
+    continuing = False
+    for line in raw.split("\n"):
+        if continuing and joined:
+            joined[-1] += line
         else:
-            juntadas.append(linha)
-        continuar = len(linha) == LARGURA_DO_TEX
-    return "\n".join(juntadas)
+            joined.append(line)
+        continuing = len(line) == TEX_WIDTH
+    return "\n".join(joined)
 
 
-def ler_log(caminho_do_log: Path) -> list[Diagnostico]:
-    """Extrai erros e avisos de um .log do LaTeX."""
+def read_log(log_path: Path) -> list[Diagnostic]:
+    """Extract errors and warnings from a LaTeX .log."""
     try:
-        bruto = caminho_do_log.read_text(encoding="utf-8", errors="replace")
+        raw = log_path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return []
 
-    texto = _desdobrar(bruto)
+    text = _unwrap(raw)
+    diagnostics: list[Diagnostic] = []
 
-    diagnosticos: list[Diagnostico] = []
-
-    for casamento in ERRO.finditer(texto):
-        mensagem = casamento.group(1).strip()
-        resto = texto[casamento.end() : casamento.end() + 2000]
-        linha = LINHA_DO_ERRO.search(resto)
-        arquivo = None
-        anterior = ABRE_ARQUIVO.findall(texto[: casamento.start()])
-        if anterior:
-            arquivo = anterior[-1]
-        diagnosticos.append(
-            Diagnostico(
-                "erro",
-                mensagem,
-                arquivo,
-                int(linha.group(1)) if linha else None,
-            )
+    for match in ERROR.finditer(text):
+        message = match.group(1).strip()
+        rest = text[match.end() : match.end() + 2000]
+        line = ERROR_LINE.search(rest)
+        file = None
+        previous = OPENS_FILE.findall(text[: match.start()])
+        if previous:
+            file = previous[-1]
+        diagnostics.append(
+            Diagnostic("error", message, file, int(line.group(1)) if line else None)
         )
 
-    for casamento in AVISO.finditer(texto):
-        pacote, mensagem = casamento.groups()
-        if "Rerun" in mensagem:  # ruído: o latexmk já resolve sozinho
+    for match in WARNING.finditer(text):
+        package, message = match.groups()
+        if "Rerun" in message:  # noise: latexmk sorts this out by itself
             continue
-        onde = LINHA_DE_ENTRADA.search(mensagem)
-        rotulo = f"{pacote}: {mensagem}" if pacote else mensagem
-        diagnosticos.append(
-            Diagnostico("aviso", rotulo.strip(), None,
-                        int(onde.group(1)) if onde else None)
+        where = INPUT_LINE.search(message)
+        label = f"{package}: {message}" if package else message
+        diagnostics.append(
+            Diagnostic("warning", label.strip(), None,
+                       int(where.group(1)) if where else None)
         )
 
-    return diagnosticos
+    return diagnostics
 
 
-class Compilador(GObject.Object):
-    """Roda o latexmk e avisa quando termina."""
+class Builder(GObject.Object):
+    """Runs latexmk and reports when it is done."""
 
     __gsignals__ = {
-        "comecou": (GObject.SignalFlags.RUN_FIRST, None, (bool,)),
-        # (deu certo, caminho do pdf ou "", diagnósticos, era prévia)
-        "terminou": (GObject.SignalFlags.RUN_FIRST, None, (bool, str, object, bool)),
+        "started": (GObject.SignalFlags.RUN_FIRST, None, (bool,)),
+        # (succeeded, pdf path or "", diagnostics, was a preview)
+        "finished": (GObject.SignalFlags.RUN_FIRST, None, (bool, str, object, bool)),
     }
 
     def __init__(self) -> None:
         super().__init__()
-        self._processo: Gio.Subprocess | None = None
-        self._pendente: tuple | None = None
+        self._process: Gio.Subprocess | None = None
+        self._pending: tuple | None = None
 
     @property
-    def ocupado(self) -> bool:
-        return self._processo is not None
+    def busy(self) -> bool:
+        return self._process is not None
 
-    # --------------------------------------------------------- os dois modos
+    # -------------------------------------------------------- the two modes
 
-    def compilar(self, arquivo_tex: Path) -> None:
-        """Compila o arquivo do usuário, que já deve estar gravado."""
-        pasta = arquivo_tex.parent
-        script = self._script_do_projeto(pasta)
+    def build(self, tex_file: Path) -> None:
+        """Compile the user's file, which must already be on disk."""
+        folder = tex_file.parent
+        script = self._project_script(folder)
         if script is not None:
-            argumentos = [str(script), str(pasta)]
-            diretorio = str(script.parent.parent)
+            arguments = [str(script), str(folder)]
+            directory = str(script.parent.parent)
         else:
-            argumentos = [
+            arguments = [
                 "latexmk", "-pdf", "-interaction=nonstopmode",
-                "-halt-on-error", "-synctex=1", arquivo_tex.name,
+                "-halt-on-error", "-synctex=1", tex_file.name,
             ]
-            diretorio = str(pasta)
-        self._lancar(
-            argumentos,
-            diretorio,
-            self._pdf_de(arquivo_tex, pasta),
-            self._log_de(arquivo_tex, pasta),
-            previa=False,
+            directory = str(folder)
+        self._launch(
+            arguments,
+            directory,
+            self._pdf_for(tex_file, folder),
+            self._log_for(tex_file, folder),
+            preview=False,
         )
 
-    def compilar_previa(self, texto: str, arquivo_tex: Path) -> None:
-        """Compila o buffer sem tocar no arquivo do usuário."""
-        sombra = self.pasta_da_sombra(arquivo_tex.parent)
+    def build_preview(self, text: str, tex_file: Path) -> None:
+        """Compile the buffer without touching the user's file."""
+        shadow = self.shadow_folder(tex_file.parent)
         try:
-            sombra.mkdir(parents=True, exist_ok=True)
-            (sombra / "previa.tex").write_text(texto, encoding="utf-8")
-        except OSError as erro:
-            self.emit("terminou", False, "", [Diagnostico("erro", str(erro))], True)
+            shadow.mkdir(parents=True, exist_ok=True)
+            (shadow / "previa.tex").write_text(text, encoding="utf-8")
+        except OSError as error:
+            self.emit("finished", False, "", [Diagnostic("error", str(error))], True)
             return
 
-        self._lancar(
+        self._launch(
             [
                 "latexmk", "-pdf", "-interaction=nonstopmode", "-halt-on-error",
-                f"-output-directory={sombra}", str(sombra / "previa.tex"),
+                f"-output-directory={shadow}", str(shadow / "previa.tex"),
             ],
-            # O diretório de trabalho é o da pasta do texto, não o da sombra:
-            # é o que mantém os caminhos relativos do documento resolvendo.
-            str(arquivo_tex.parent),
-            sombra / "previa.pdf",
-            sombra / "previa.log",
-            previa=True,
+            # The working directory is the text's folder, not the shadow's:
+            # that is what keeps the document's relative paths resolving.
+            str(tex_file.parent),
+            shadow / "previa.pdf",
+            shadow / "previa.log",
+            preview=True,
         )
 
     @staticmethod
-    def pasta_da_sombra(pasta_do_texto: Path) -> Path:
-        chave = hashlib.sha1(str(pasta_do_texto).encode()).hexdigest()[:12]
-        return Path(GLib.get_user_cache_dir()) / "serifa" / "previa" / chave
+    def shadow_folder(text_folder: Path) -> Path:
+        key = hashlib.sha1(str(text_folder).encode()).hexdigest()[:12]
+        return Path(GLib.get_user_cache_dir()) / "serifa" / "previa" / key
 
-    # ------------------------------------------------------------- execução
+    # ----------------------------------------------------------- execution
 
-    def _lancar(
-        self, argumentos: list[str], diretorio: str, pdf: Path, log: Path, previa: bool
+    def _launch(
+        self, arguments: list[str], directory: str, pdf: Path, log: Path, preview: bool
     ) -> None:
-        if self._processo is not None:
-            # Uma de cada vez; a última pedida vence.
-            self._pendente = (argumentos, diretorio, pdf, log, previa)
+        if self._process is not None:
+            # One at a time; the last one asked for wins.
+            self._pending = (arguments, directory, pdf, log, preview)
             return
 
-        lanc = Gio.SubprocessLauncher.new(
+        launcher = Gio.SubprocessLauncher.new(
             Gio.SubprocessFlags.STDOUT_SILENCE | Gio.SubprocessFlags.STDERR_SILENCE
         )
-        lanc.set_cwd(diretorio)
+        launcher.set_cwd(directory)
         try:
-            self._processo = lanc.spawnv(argumentos)
-        except GLib.Error as erro:
-            self.emit("terminou", False, "", [Diagnostico("erro", str(erro))], previa)
+            self._process = launcher.spawnv(arguments)
+        except GLib.Error as error:
+            self.emit("finished", False, "", [Diagnostic("error", str(error))], preview)
             return
 
-        self.emit("comecou", previa)
-        self._processo.wait_async(None, self._ao_terminar, (pdf, log, previa))
+        self.emit("started", preview)
+        self._process.wait_async(None, self._on_finished, (pdf, log, preview))
 
-    def _ao_terminar(self, processo: Gio.Subprocess, resultado, dados) -> None:
-        pdf, log, previa = dados
+    def _on_finished(self, process: Gio.Subprocess, result, data) -> None:
+        pdf, log, preview = data
         with contextlib.suppress(GLib.Error):
-            processo.wait_finish(resultado)
-        self._processo = None
+            process.wait_finish(result)
+        self._process = None
 
-        diagnosticos = ler_log(log)
-        tem_pdf = pdf.exists()
-        # O latexmk devolve código de erro mesmo quando o PDF saiu; quem manda
-        # é o arquivo existir e não haver erro no log.
-        sucesso = tem_pdf and not any(d.severidade == "erro" for d in diagnosticos)
-        self.emit("terminou", sucesso, str(pdf) if tem_pdf else "", diagnosticos, previa)
+        diagnostics = read_log(log)
+        has_pdf = pdf.exists()
+        # latexmk returns a failure code even when the PDF came out; what
+        # decides is the file existing and the log carrying no error.
+        succeeded = has_pdf and not any(d.severity == "error" for d in diagnostics)
+        self.emit("finished", succeeded, str(pdf) if has_pdf else "",
+                  diagnostics, preview)
 
-        if self._pendente is not None:
-            pendente, self._pendente = self._pendente, None
-            self._lancar(*pendente)
+        if self._pending is not None:
+            pending, self._pending = self._pending, None
+            self._launch(*pending)
 
-    # ------------------------------------------------------------- caminhos
+    # ------------------------------------------------------------- paths
 
     @staticmethod
-    def _script_do_projeto(pasta: Path) -> Path | None:
-        """Sobe a árvore procurando um scripts/compilar.sh executável."""
-        for candidata in [pasta, *pasta.parents]:
-            script = candidata / "scripts" / "compilar.sh"
+    def _project_script(folder: Path) -> Path | None:
+        """Walk up looking for an executable scripts/compilar.sh."""
+        for candidate in [folder, *folder.parents]:
+            script = candidate / "scripts" / "compilar.sh"
             if script.is_file() and os.access(script, os.X_OK):
                 return script
         return None
 
     @staticmethod
-    def _pdf_de(arquivo_tex: Path, pasta: Path) -> Path:
-        # O compilar.sh nomeia o PDF pela pasta; o latexmk cru, pelo .tex.
-        pelo_nome_da_pasta = pasta / f"{pasta.name}.pdf"
-        if pelo_nome_da_pasta.exists():
-            return pelo_nome_da_pasta
-        return arquivo_tex.with_suffix(".pdf")
+    def _pdf_for(tex_file: Path, folder: Path) -> Path:
+        # compilar.sh names the PDF after the folder; bare latexmk, after the
+        # .tex file.
+        by_folder_name = folder / f"{folder.name}.pdf"
+        if by_folder_name.exists():
+            return by_folder_name
+        return tex_file.with_suffix(".pdf")
 
     @staticmethod
-    def _log_de(arquivo_tex: Path, pasta: Path) -> Path:
-        pelo_nome_da_pasta = pasta / f"{pasta.name}.log"
-        if pelo_nome_da_pasta.exists():
-            return pelo_nome_da_pasta
-        return arquivo_tex.with_suffix(".log")
+    def _log_for(tex_file: Path, folder: Path) -> Path:
+        by_folder_name = folder / f"{folder.name}.log"
+        if by_folder_name.exists():
+            return by_folder_name
+        return tex_file.with_suffix(".log")

@@ -1,8 +1,8 @@
-"""O painel do PDF.
+"""The PDF pane.
 
-Renderiza com Poppler direto em cairo -- sem passar por PNG em disco, que é o
-que deixa o preview do Neovim mais lento a cada recompilação. As páginas são
-desenhadas sob demanda: só a faixa visível chega a ser rasterizada.
+Renders with Poppler straight into cairo -- no PNGs on disk in between, which
+is what makes Neovim's preview slower with every rebuild. Pages are drawn on
+demand: only the visible band ever gets rasterised.
 """
 
 from __future__ import annotations
@@ -16,192 +16,193 @@ gi.require_version("Poppler", "0.18")
 
 from gi.repository import Gdk, Gtk, Poppler
 
-ESPACO_ENTRE_PAGINAS = 12
+PAGE_GAP = 12
 
 
 class Preview(Gtk.Box):
-    """Rolagem vertical contínua das páginas do PDF."""
+    """Continuous vertical scroll through the PDF's pages."""
 
     __gtype_name__ = "SerifaPreview"
 
     def __init__(self) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
 
-        self._documento: Poppler.Document | None = None
+        self._document: Poppler.Document | None = None
         self._zoom = 1.0
-        self._ajustar_largura = True
-        self._caminho: Path | None = None
+        self._fit_width = True
+        self._path: Path | None = None
 
         self._area = Gtk.DrawingArea()
-        self._area.set_draw_func(self._desenhar)
+        self._area.set_draw_func(self._draw)
 
-        self._rolagem = Gtk.ScrolledWindow()
-        self._rolagem.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
-        self._rolagem.set_child(self._area)
-        self._rolagem.set_vexpand(True)
-        self._rolagem.get_hadjustment().connect("changed", self._ao_mudar_largura)
+        self._scroller = Gtk.ScrolledWindow()
+        self._scroller.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        self._scroller.set_child(self._area)
+        self._scroller.set_vexpand(True)
+        self._scroller.get_hadjustment().connect("changed", self._on_width_changed)
 
-        self._vazio = Gtk.Label()
-        self._vazio.set_markup(
+        self._empty = Gtk.Label()
+        self._empty.set_markup(
             "<span size='large'>Sem PDF ainda</span>\n"
             "<span alpha='60%'>Ctrl+B compila</span>"
         )
-        self._vazio.set_justify(Gtk.Justification.CENTER)
-        self._vazio.set_vexpand(True)
+        self._empty.set_justify(Gtk.Justification.CENTER)
+        self._empty.set_vexpand(True)
 
-        self._pilha = Gtk.Stack()
-        self._pilha.add_named(self._vazio, "vazio")
-        self._pilha.add_named(self._rolagem, "pdf")
-        self._pilha.set_vexpand(True)
-        self.append(self._pilha)
+        self._stack = Gtk.Stack()
+        self._stack.add_named(self._empty, "empty")
+        self._stack.add_named(self._scroller, "pdf")
+        self._stack.set_vexpand(True)
+        self.append(self._stack)
 
-        # Ctrl+scroll dá zoom, como em qualquer visualizador.
-        rolinha = Gtk.EventControllerScroll.new(
+        # Ctrl+scroll zooms, as in any viewer.
+        wheel = Gtk.EventControllerScroll.new(
             Gtk.EventControllerScrollFlags.VERTICAL
         )
-        rolinha.connect("scroll", self._ao_rolar)
-        self._area.add_controller(rolinha)
+        wheel.connect("scroll", self._on_scroll)
+        self._area.add_controller(wheel)
 
-    # ----------------------------------------------------------- documento
+    # ----------------------------------------------------------- document
 
-    def carregar(self, caminho: str | Path) -> bool:
-        caminho = Path(caminho)
-        if not caminho.exists():
+    def load(self, path: str | Path) -> bool:
+        path = Path(path)
+        if not path.exists():
             return False
 
-        posicao = self._rolagem.get_vadjustment().get_value()
+        position = self._scroller.get_vadjustment().get_value()
         try:
-            self._documento = Poppler.Document.new_from_file(caminho.as_uri(), None)
+            self._document = Poppler.Document.new_from_file(path.as_uri(), None)
         except Exception:
             return False
 
-        self._caminho = caminho
-        self._pilha.set_visible_child_name("pdf")
-        self._remedir()
-        # Recompilar não deve jogar o leitor de volta para o topo.
-        self._rolagem.get_vadjustment().set_value(posicao)
+        self._path = path
+        self._stack.set_visible_child_name("pdf")
+        self._remeasure()
+        # Rebuilding should not throw the reader back to the top.
+        self._scroller.get_vadjustment().set_value(position)
         return True
 
-    def recarregar(self) -> bool:
-        return self.carregar(self._caminho) if self._caminho else False
+    def reload(self) -> bool:
+        return self.load(self._path) if self._path else False
 
     @property
-    def paginas(self) -> int:
-        return self._documento.get_n_pages() if self._documento else 0
+    def pages(self) -> int:
+        return self._document.get_n_pages() if self._document else 0
 
     # ---------------------------------------------------------------- zoom
 
-    def aplicar_zoom(self, fator: float) -> None:
-        self._ajustar_largura = False
-        self._zoom = max(0.2, min(6.0, self._zoom * fator))
-        self._remedir()
+    def apply_zoom(self, factor: float) -> None:
+        self._fit_width = False
+        self._zoom = max(0.2, min(6.0, self._zoom * factor))
+        self._remeasure()
 
-    def ajustar_a_largura(self) -> None:
-        self._ajustar_largura = True
-        self._remedir()
+    def fit_width(self) -> None:
+        self._fit_width = True
+        self._remeasure()
 
     @property
     def zoom(self) -> float:
         return self._zoom
 
-    def _ao_rolar(self, controlador, dx: float, dy: float) -> bool:
-        estado = controlador.get_current_event_state()
-        if estado & Gdk.ModifierType.CONTROL_MASK:
-            self.aplicar_zoom(0.9 if dy > 0 else 1.1)
+    def _on_scroll(self, controller, dx: float, dy: float) -> bool:
+        state = controller.get_current_event_state()
+        if state & Gdk.ModifierType.CONTROL_MASK:
+            self.apply_zoom(0.9 if dy > 0 else 1.1)
             return True
         return False
 
-    def _ao_mudar_largura(self, *_args) -> None:
-        if self._ajustar_largura:
-            self._remedir()
+    def _on_width_changed(self, *_args) -> None:
+        if self._fit_width:
+            self._remeasure()
 
-    # ------------------------------------------------------------- desenho
+    # ------------------------------------------------------------- drawing
 
-    def _tamanho_da_pagina(self, indice: int) -> tuple[float, float]:
-        return self._documento.get_page(indice).get_size()
+    def _page_size(self, index: int) -> tuple[float, float]:
+        return self._document.get_page(index).get_size()
 
-    def _escala(self) -> float:
-        if not self._documento:
+    def _scale(self) -> float:
+        if not self._document:
             return self._zoom
-        if self._ajustar_largura:
-            disponivel = self._rolagem.get_width()
-            if disponivel > 1:
-                largura, _ = self._tamanho_da_pagina(0)
-                self._zoom = max(0.2, (disponivel - 2 * ESPACO_ENTRE_PAGINAS) / largura)
+        if self._fit_width:
+            available = self._scroller.get_width()
+            if available > 1:
+                width, _ = self._page_size(0)
+                self._zoom = max(0.2, (available - 2 * PAGE_GAP) / width)
         return self._zoom
 
-    def _remedir(self) -> None:
-        if not self._documento:
+    def _remeasure(self) -> None:
+        if not self._document:
             return
-        escala = self._escala()
-        largura = 0.0
-        altura = float(ESPACO_ENTRE_PAGINAS)
-        for i in range(self.paginas):
-            p_largura, p_altura = self._tamanho_da_pagina(i)
-            largura = max(largura, p_largura * escala)
-            altura += p_altura * escala + ESPACO_ENTRE_PAGINAS
-        self._area.set_content_width(int(largura + 2 * ESPACO_ENTRE_PAGINAS))
-        self._area.set_content_height(int(altura))
+        scale = self._scale()
+        width = 0.0
+        height = float(PAGE_GAP)
+        for i in range(self.pages):
+            page_width, page_height = self._page_size(i)
+            width = max(width, page_width * scale)
+            height += page_height * scale + PAGE_GAP
+        self._area.set_content_width(int(width + 2 * PAGE_GAP))
+        self._area.set_content_height(int(height))
         self._area.queue_draw()
 
-    def _desenhar(self, area: Gtk.DrawingArea, ctx, largura: int, altura: int) -> None:
-        if not self._documento:
+    def _draw(self, area: Gtk.DrawingArea, ctx, width: int, height: int) -> None:
+        if not self._document:
             return
 
-        escala = self._zoom
-        ajuste = self._rolagem.get_vadjustment()
-        topo_visivel = ajuste.get_value()
-        base_visivel = topo_visivel + ajuste.get_page_size()
+        scale = self._zoom
+        adjustment = self._scroller.get_vadjustment()
+        visible_top = adjustment.get_value()
+        visible_bottom = visible_top + adjustment.get_page_size()
 
-        y = float(ESPACO_ENTRE_PAGINAS)
-        for i in range(self.paginas):
-            p_largura, p_altura = self._tamanho_da_pagina(i)
-            desenhada_largura = p_largura * escala
-            desenhada_altura = p_altura * escala
-            x = (largura - desenhada_largura) / 2
+        y = float(PAGE_GAP)
+        for i in range(self.pages):
+            page_width, page_height = self._page_size(i)
+            drawn_width = page_width * scale
+            drawn_height = page_height * scale
+            x = (width - drawn_width) / 2
 
-            # Só rasteriza o que está (quase) à vista.
-            if y + desenhada_altura >= topo_visivel - 200 and y <= base_visivel + 200:
+            # Only rasterise what is (nearly) in view.
+            if y + drawn_height >= visible_top - 200 and y <= visible_bottom + 200:
                 ctx.save()
-                # Fio em volta da folha, não sombra difusa: sombra cinza sob
-                # tudo é o que faz uma interface parecer amontoado de cartões.
+                # A hairline around the sheet, not a soft shadow: grey shadow
+                # under everything is what makes an interface look like a pile
+                # of cards.
                 ctx.set_source_rgba(0, 0, 0, 0.28)
-                ctx.rectangle(x - 1, y - 1, desenhada_largura + 2, desenhada_altura + 2)
+                ctx.rectangle(x - 1, y - 1, drawn_width + 2, drawn_height + 2)
                 ctx.fill()
-                # O papel é sempre branco, mesmo no tema escuro: é o que o
-                # professor vai ver impresso.
+                # The paper is always white, even in the dark theme: it is what
+                # the professor will see printed.
                 ctx.set_source_rgb(1, 1, 1)
-                ctx.rectangle(x, y, desenhada_largura, desenhada_altura)
+                ctx.rectangle(x, y, drawn_width, drawn_height)
                 ctx.fill()
                 ctx.translate(x, y)
-                ctx.scale(escala, escala)
-                self._documento.get_page(i).render(ctx)
+                ctx.scale(scale, scale)
+                self._document.get_page(i).render(ctx)
                 ctx.restore()
 
-            y += desenhada_altura + ESPACO_ENTRE_PAGINAS
+            y += drawn_height + PAGE_GAP
 
-    # ------------------------------------------------------------ navegação
+    # ------------------------------------------------------------ navigation
 
-    def ir_para_pagina(self, numero: int) -> None:
-        if not self._documento:
+    def go_to_page(self, number: int) -> None:
+        if not self._document:
             return
-        escala = self._zoom
-        y = float(ESPACO_ENTRE_PAGINAS)
-        for i in range(max(0, min(numero, self.paginas) - 1)):
-            _, p_altura = self._tamanho_da_pagina(i)
-            y += p_altura * escala + ESPACO_ENTRE_PAGINAS
-        self._rolagem.get_vadjustment().set_value(y - ESPACO_ENTRE_PAGINAS)
+        scale = self._zoom
+        y = float(PAGE_GAP)
+        for i in range(max(0, min(number, self.pages) - 1)):
+            _, page_height = self._page_size(i)
+            y += page_height * scale + PAGE_GAP
+        self._scroller.get_vadjustment().set_value(y - PAGE_GAP)
 
     @property
-    def pagina_atual(self) -> int:
-        if not self._documento:
+    def current_page(self) -> int:
+        if not self._document:
             return 0
-        alvo = self._rolagem.get_vadjustment().get_value()
-        escala = self._zoom
-        y = float(ESPACO_ENTRE_PAGINAS)
-        for i in range(self.paginas):
-            _, p_altura = self._tamanho_da_pagina(i)
-            y += p_altura * escala + ESPACO_ENTRE_PAGINAS
-            if y > alvo + 40:
+        target = self._scroller.get_vadjustment().get_value()
+        scale = self._zoom
+        y = float(PAGE_GAP)
+        for i in range(self.pages):
+            _, page_height = self._page_size(i)
+            y += page_height * scale + PAGE_GAP
+            if y > target + 40:
                 return i + 1
-        return self.paginas
+        return self.pages
