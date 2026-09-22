@@ -30,7 +30,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 # Os testes montam cenários; asserção em laço e nome longo são o normal ali.
-"testes/*" = ["B011"]
+"tests/*" = ["B011"]
 
 [tool.coverage.run]
 source = ["serifa"]

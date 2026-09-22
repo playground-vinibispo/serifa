@@ -1,18 +1,18 @@
-"""Bisect do modo vim: da receita oficial até a Serifa inteira.
+"""Bisecting vim mode: from the official recipe up to the whole of Serifa.
 
-Toda tecla que chegar à fase de bolha é tecla que o contexto do vim NÃO
-filtrou. Em modo normal, nenhuma tecla imprimível deveria chegar lá.
+Every key that reaches the bubble phase is a key vim's context did NOT
+filter. In normal mode, no printable key should ever get there.
 
-Variantes, em ordem crescente de "quanto da Serifa está em volta":
+Variants, in increasing order of "how much of Serifa is around it":
 
-  minimo   a receita oficial do GtkSourceView, nada mais
-  popup    a receita + um controlador de captura inerte antes do vim,
-           imitando o do popup de completação
-  editor   a classe serifa.editor.Editor, com o vim ligado pelo método dela
-  janela   a Serifa inteira, com o detector grudado no editor de verdade
+  minimo   GtkSourceView's official recipe, nothing more
+  popup    the recipe + an inert capture controller ahead of vim, mimicking
+           the one the completion popup used to have
+  editor   the serifa.editor.Editor class, with vim turned on by its method
+  janela   the whole of Serifa, with the detector stuck to the real editor
 
-Rode em ordem e pare na primeira que vazar: a camada que entrou ali é a
-culpada.
+Run them in order and stop at the first one that leaks: the layer that came
+in there is the culprit.
 """
 
 import sys
@@ -25,56 +25,56 @@ gi.require_version("Gdk", "4.0")
 
 from gi.repository import Gdk, Gtk, GtkSource
 
-VARIANTE = sys.argv[1] if len(sys.argv) > 1 else "minimo"
-TEXTO = "abcdef\nghijkl\nmnopqr\n"
+VARIANT = sys.argv[1] if len(sys.argv) > 1 else "minimo"
+TEXT = "abcdef\nghijkl\nmnopqr\n"
 
 
-def detector(vista, aviso):
-    """Gruda na fase de bolha e relata toda tecla que escapou do vim."""
-    vazamentos = []
+def detector(view, report):
+    """Sticks to the bubble phase and reports every key that escaped vim."""
+    leaks = []
 
-    def vazou(_c, keyval, _code, _estado):
-        nome = Gdk.keyval_name(keyval) or "?"
-        if nome.startswith(("Shift", "Control", "Alt", "Super", "Meta", "ISO")):
+    def leaked(_c, keyval, _code, _state):
+        name = Gdk.keyval_name(keyval) or "?"
+        if name.startswith(("Shift", "Control", "Alt", "Super", "Meta", "ISO")):
             return False
-        vazamentos.append(nome)
-        aviso(f"overwrite={vista.get_overwrite()}   "
-              f"VAZOU ({len(vazamentos)}): {' '.join(vazamentos[-12:])}")
-        print(f"VAZOU: {nome}", flush=True)
+        leaks.append(name)
+        report(f"overwrite={view.get_overwrite()}   "
+               f"VAZOU ({len(leaks)}): {' '.join(leaks[-12:])}")
+        print(f"VAZOU: {name}", flush=True)
         return False
 
-    bolha = Gtk.EventControllerKey()
-    bolha.set_propagation_phase(Gtk.PropagationPhase.BUBBLE)
-    bolha.connect("key-pressed", vazou)
-    vista.add_controller(bolha)
+    bubble = Gtk.EventControllerKey()
+    bubble.set_propagation_phase(Gtk.PropagationPhase.BUBBLE)
+    bubble.connect("key-pressed", leaked)
+    view.add_controller(bubble)
 
 
-def montar_janela_completa(app):
-    """Variante 'janela': a Serifa de verdade, com o detector grudado."""
+def build_full_window(app):
+    """The 'janela' variant: the real Serifa, with the detector attached."""
     import pathlib
     sys.path.insert(0, str(pathlib.Path(__file__).parent))
 
     from serifa.window import Window
 
-    janela = Window(application=app)
-    janela.present()
-    editor = janela._editor
-    janela._vim_button.set_active(True)
+    window = Window(application=app)
+    window.present()
+    editor = window._editor
+    window._vim_button.set_active(True)
     editor.grab_focus()
     detector(editor, lambda t: print(t, flush=True))
 
-    # Registra toda tecla no ponto exato em que ela chega ao controlador do
-    # vim, antes do filtro. "consumida=True" quer dizer que alguém da Serifa
-    # ficou com ela e o vim nunca a viu.
-    controlador_vim = editor._vim_controller
+    # Logs every key at the exact point it reaches vim's controller, before
+    # the filter. "consumida=True" means something in Serifa kept it and vim
+    # never saw it.
+    vim_controller = editor._vim_controller
 
-    def espiar(_c, keyval, _code, estado):
-        nome = Gdk.keyval_name(keyval) or "?"
-        if nome.startswith(("Shift", "Control", "Alt", "Super", "Meta", "ISO")):
+    def peek(_c, keyval, _code, _state):
+        name = Gdk.keyval_name(keyval) or "?"
+        if name.startswith(("Shift", "Control", "Alt", "Super", "Meta", "ISO")):
             return False
         print(
-            f"tecla {nome:<12} "
-            f"balão={'aberto' if janela._popup.visible else 'fechado':<7} "
+            f"tecla {name:<12} "
+            f"balão={'aberto' if window._popup.visible else 'fechado':<7} "
             f"seleção={bool(editor.buffer.get_selection_bounds())} "
             f"completacao_nativa="
             f"{editor.get_completion().get_property('view') is not None}",
@@ -82,10 +82,10 @@ def montar_janela_completa(app):
         )
         return False
 
-    controlador_vim.connect("key-pressed", espiar)
+    vim_controller.connect("key-pressed", peek)
 
     import os
-    os.environ.setdefault("SERIFA_DEBUG", "1")   # liga o relato de [bloco]
+    os.environ.setdefault("SERIFA_DEBUG", "1")   # turns on the [bloco] report
     print(f"variante=janela  vim={editor.vim_active}  "
           f"overwrite={editor.get_overwrite()}", flush=True)
     print("Ponha o cursor dentro de {...} e tente: viw, depois ci{, depois vi{",
@@ -93,71 +93,71 @@ def montar_janela_completa(app):
     print("Cada tecla que o vim recebe aparece abaixo.", flush=True)
 
 
-def montar(app):
-    if VARIANTE == "janela":
-        return montar_janela_completa(app)
+def build(app):
+    if VARIANT == "janela":
+        return build_full_window(app)
 
-    if VARIANTE == "editor":
+    if VARIANT == "editor":
         sys.path.insert(0, str(__import__("pathlib").Path(__file__).parent))
         from serifa.editor import Editor
-        vista = Editor()
-        buffer = vista.buffer
+        view = Editor()
+        buffer = view.buffer
     else:
-        vista = GtkSource.View()
-        buffer = vista.get_buffer()
-    buffer.set_text(TEXTO)
-    vista.set_monospace(True)
-    vista.set_show_line_numbers(True)
+        view = GtkSource.View()
+        buffer = view.get_buffer()
+    buffer.set_text(TEXT)
+    view.set_monospace(True)
+    view.set_show_line_numbers(True)
 
-    relato = Gtk.Label(label="digite:  j  k  x  i")
-    relato.add_css_class("monospace")
-    relato.set_xalign(0.0)
-    relato.set_wrap(True)
+    report = Gtk.Label(label="digite:  j  k  x  i")
+    report.add_css_class("monospace")
+    report.set_xalign(0.0)
+    report.set_wrap(True)
 
-    if VARIANTE == "popup":
-        # O controlador do popup da Serifa, exatamente como lá: mesma fase,
-        # adicionado ANTES do vim, devolvendo False sempre.
-        antes = Gtk.EventControllerKey()
-        antes.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
-        antes.connect("key-pressed", lambda *_: False)
-        vista.add_controller(antes)
+    if VARIANT == "popup":
+        # The controller Serifa's popup used to install, exactly as it was:
+        # same phase, added BEFORE vim, always returning False.
+        before = Gtk.EventControllerKey()
+        before.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        before.connect("key-pressed", lambda *_: False)
+        view.add_controller(before)
 
-    if VARIANTE == "editor":
-        vista.toggle_vim(True)   # o caminho da Serifa, não a receita crua
+    if VARIANT == "editor":
+        view.toggle_vim(True)   # Serifa's path, not the raw recipe
     else:
         vim = GtkSource.VimIMContext()
-        chaves = Gtk.EventControllerKey()
-        chaves.set_im_context(vim)
-        chaves.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
-        vista.add_controller(chaves)
-        vim.set_client_widget(vista)
+        keys = Gtk.EventControllerKey()
+        keys.set_im_context(vim)
+        keys.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        view.add_controller(keys)
+        vim.set_client_widget(view)
 
-    detector(vista, relato.set_label)
+    detector(view, report.set_label)
 
-    caixa = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-    caixa.set_margin_start(12)
-    caixa.set_margin_end(12)
-    caixa.set_margin_top(12)
-    caixa.set_margin_bottom(12)
-    titulo = Gtk.Label()
-    titulo.set_markup(
-        f"<b>variante: {VARIANTE}</b>  —  se o vim funciona, "
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+    box.set_margin_start(12)
+    box.set_margin_end(12)
+    box.set_margin_top(12)
+    box.set_margin_bottom(12)
+    title = Gtk.Label()
+    title.set_markup(
+        f"<b>variante: {VARIANT}</b>  —  se o vim funciona, "
         "<tt>j</tt> e <tt>k</tt> andam e NÃO aparece VAZOU"
     )
-    titulo.set_xalign(0.0)
-    caixa.append(titulo)
-    caixa.append(vista)
-    caixa.append(relato)
+    title.set_xalign(0.0)
+    box.append(title)
+    box.append(view)
+    box.append(report)
 
-    janela = Gtk.ApplicationWindow(application=app, title=f"diagnóstico vim — {VARIANTE}")
-    janela.set_default_size(560, 380)
-    janela.set_child(caixa)
-    janela.present()
-    vista.grab_focus()
-    print(f"variante={VARIANTE}  "
-          f"overwrite após ligar o vim={vista.get_overwrite()}", flush=True)
+    window = Gtk.ApplicationWindow(application=app, title=f"diagnóstico vim — {VARIANT}")
+    window.set_default_size(560, 380)
+    window.set_child(box)
+    window.present()
+    view.grab_focus()
+    print(f"variante={VARIANT}  "
+          f"overwrite após ligar o vim={view.get_overwrite()}", flush=True)
 
 
-app = Gtk.Application(application_id=f"br.ufmg.vinibispo.DiagVim.{VARIANTE}")
-app.connect("activate", montar)
+app = Gtk.Application(application_id=f"br.ufmg.vinibispo.DiagVim.{VARIANT}")
+app.connect("activate", build)
 sys.exit(app.run([]))

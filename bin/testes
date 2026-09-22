@@ -2,7 +2,7 @@
 # Suíte da Serifa.
 #   bin/testes                       tudo
 #   bin/testes -v                    verboso
-#   bin/testes testes.test_blocos    um módulo
+#   bin/testes tests.test_blocks     um módulo
 #   bin/testes --cobertura           com relatório de cobertura
 #   bin/testes --na-tela             na sessão gráfica atual, sem isolar
 cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
@@ -33,7 +33,7 @@ PY=".venv/bin/python"
 
 if [ "$1" = "--cobertura" ]; then
     shift
-    "$PY" -m coverage run -m unittest discover -s testes -t . "$@" || exit 1
+    "$PY" -m coverage run -m unittest discover -s tests -t . "$@" || exit 1
     "$PY" -m coverage report -m
     exit 0
 fi
@@ -41,4 +41,4 @@ fi
 if [ $# -gt 0 ] && [[ "$1" != -* ]]; then
     exec "$PY" -m unittest "$@"
 fi
-exec "$PY" -m unittest discover -s testes -t . "$@"
+exec "$PY" -m unittest discover -s tests -t . "$@"

@@ -99,7 +99,7 @@ num idle, devolvendo valor ou booleano, com ou sem referência viva para a GTask
 Não há como contornar do lado Python.
 
 Por isso a completação por contexto é um `Gtk.Popover` próprio, em
-`serifa/contexto.py`. Custou mais código e deu de volta o que o provedor daria —
+`serifa/context.py`. Custou mais código e deu de volta o que o provedor daria —
 com uma vantagem: controlando a inserção, chaves como `einstein_infeld` não
 dependem do que o scanner de palavras do `GtkSourceCompletionWords` considera
 uma palavra.
@@ -122,9 +122,10 @@ e `gtk_source_vim_insert_set_text_object`, mas o estado visual só expõe `clone
 não — ali o `i` é ignorado e o `{` vira o movimento "parágrafo anterior", que
 apenas pula o cursor.
 
-`serifa/blocos.py` implementa a delimitação, e `Editor._ao_teclar_no_vim`
-reconhece a sequência `v` → `i`/`a` → sinal. O `v` segue para o vim, que entra
-em modo visual de verdade; o `i` e o sinal são consumidos antes do filtro.
+`serifa/blocks.py` implementa a delimitação, e `Editor.handle_key` — chamado
+pelo controlador que a janela instala em si mesma — reconhece a sequência
+`v` → `i`/`a` → sinal. O `v` segue para o vim, que entra em modo visual de
+verdade; o `i` e o sinal são consumidos antes do filtro.
 
 ## Desenvolvimento
 
@@ -156,7 +157,7 @@ estão cobertas.
 ```sh
 bin/testes                    # tudo
 bin/testes -v                 # verboso
-bin/testes testes.test_blocos # um módulo
+bin/testes tests.test_blocks  # um módulo
 ```
 
 107 testes, uns 24 segundos. Sem dependência: `unittest` da biblioteca padrão,
@@ -164,7 +165,7 @@ rodando no Python do sistema, que é onde o `gi` vive.
 
 O que os torna rápidos é não precisarem de `app.run()`: basta registrar a
 aplicação, montar a janela, chamar `present()` e bombear o laço principal à
-mão (`testes/apoio.py`). Nada toca em arquivo seu — cada caso ganha uma pasta
+mão (`tests/support.py`). Nada toca em arquivo seu — cada caso ganha uma pasta
 temporária, e o estado de sessão é desviado para lá.
 
 Quando há `mutter` instalado, o `bin/testes` abre as janelas num mutter
@@ -178,16 +179,16 @@ já aconteceu:
 
 | arquivo | o que protege |
 |---|---|
-| `test_blocos` | delimitação de `vi{`, com aninhamento e chave escapada do LaTeX |
-| `test_contexto` | os seis contextos de completação, e o `.bib` lido de pastas acima |
+| `test_blocks` | delimitação de `vi{`, com aninhamento e chave escapada do LaTeX |
+| `test_context` | os seis contextos de completação, e o `.bib` lido de pastas acima |
 | `test_build` | o desdobramento das 79 colunas do TeX e o número de linha dos avisos |
 | `test_complete` | que o parser de snippets aceita o XML — errar é silencioso |
 | `test_editor` | pares automáticos, contagem de prosa, `overwrite` do modo normal |
-| `test_teclas` | o Shift no meio de `vi{`, e que o balão nunca desliga o vim |
-| `test_aparencia` | que o mobiliário de código não volta, e a medida da coluna |
-| `test_documento` | o arquivo aberto, sem janela: gravar, recarregar, conflito |
-| `test_arquivo` | **digitar não grava**, a sombra fora do projeto, a guarda ao trocar |
-| `test_formatacao` | envoltórios, aceleradores cedendo ao vim, balão só por edição |
+| `test_keys` | o Shift no meio de `vi{`, e que o balão nunca desliga o vim |
+| `test_appearance` | que o mobiliário de código não volta, e a medida da coluna |
+| `test_document` | o arquivo aberto, sem janela: gravar, recarregar, conflito |
+| `test_file_lifecycle` | **digitar não grava**, a sombra fora do projeto, a guarda ao trocar |
+| `test_formatting` | envoltórios, aceleradores cedendo ao vim, balão só por edição |
 
 ## Estrutura
 
