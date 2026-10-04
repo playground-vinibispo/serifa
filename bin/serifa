@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (C) 2026 Vinícius Bispo e colaboradores
 SERIFA_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# Passar a raiz como argumento mantém caminhos com espaços e aspas intactos.
+# Passing the root as an argument preserves paths with spaces and quotes.
 exec "$SERIFA_ROOT/bin/python" -c '
 import sys
 sys.path.insert(0, sys.argv.pop(1))

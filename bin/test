@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Vinícius Bispo e colaboradores
+# Run tests with the same Python used by the application.
+cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
+
+COVERAGE=0
+SHOW_WINDOWS=0
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --coverage) COVERAGE=1; shift ;;
+        --show-windows) SHOW_WINDOWS=1; shift ;;
+        --help|-h)
+            cat <<'HELP'
+Usage: bin/test [--coverage] [--show-windows] [unittest arguments]
+
+  bin/test                         Run the full suite
+  bin/test -v                      Verbose output
+  bin/test tests.test_blocks       Run one module
+  bin/test --coverage              Run with a coverage report
+  bin/test --show-windows          Use the current graphical session
+
+Wrapper options must precede unittest arguments; they can appear in either order.
+HELP
+            exit 0 ;;
+        --) shift; break ;;
+        *) break ;;
+    esac
+done
+
+# Use an isolated Wayland compositor and D-Bus session when available.
+# Unsetting DISPLAY alone is insufficient: Wayland could use the user's socket.
+# Disabling the portal avoids waiting for services in the new D-Bus session.
+if [ "$SHOW_WINDOWS" = 0 ] && [ -z "${SERIFA_TEST_ISOLATED:-}" ] && command -v mutter >/dev/null; then
+    TEST_SOCKET="serifa-tests-$$"
+    TEST_OPTIONS=()
+    [ "$COVERAGE" = 0 ] || TEST_OPTIONS+=(--coverage)
+    exec dbus-run-session -- mutter --headless --no-x11 \
+        --virtual-monitor 1280x800 --wayland-display="$TEST_SOCKET" -- \
+        env -u DISPLAY WAYLAND_DISPLAY="$TEST_SOCKET" SERIFA_TEST_ISOLATED=1 \
+        GDK_BACKEND=wayland GSK_RENDERER="${GSK_RENDERER:-cairo}" \
+        ADW_DISABLE_PORTAL=1 GTK_A11Y=none \
+        "$0" "${TEST_OPTIONS[@]}" "$@" \
+        2> >(grep -vE '^(libmutter|\(mutter|mutter|Gdk-Message|A connection to the bus)' >&2)
+fi
+
+if [ $# -gt 0 ] && [[ "$1" != -* ]]; then
+    TEST_COMMAND=(-m unittest "$@")
+else
+    TEST_COMMAND=(-m unittest discover -s tests -t . "$@")
+fi
+
+if [ "$COVERAGE" = 1 ]; then
+    bin/python -m coverage run "${TEST_COMMAND[@]}" || exit 1
+    exec bin/python -m coverage report -m
+fi
+exec bin/python "${TEST_COMMAND[@]}"

@@ -34,10 +34,10 @@ jobs:
       - uses: astral-sh/setup-uv@v5
 
       - name: ambiente
-        run: bin/preparar
+        run: bin/setup
 
       # O GTK4 não tem backend offscreen; o Xvfb dá o servidor gráfico de que
       # os testes de janela precisam. Os que dependem do latexmk se pulam
       # sozinhos, para a CI não baixar um texlive inteiro.
       - name: suíte
-        run: xvfb-run -a ./bin/testes --cobertura
+        run: xvfb-run -a ./bin/test --coverage

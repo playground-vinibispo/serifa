@@ -25,7 +25,7 @@ clone ou fork:
 git clone https://github.com/playground-vinibispo/serifa.git
 cd serifa
 bin/python --check
-bin/preparar
+bin/setup
 bin/serifa
 ```
 
@@ -36,7 +36,7 @@ branch para sua mudança:
 git switch -c minha-contribuicao
 ```
 
-`bin/preparar` cria um `.venv` que enxerga os bindings GObject do sistema e
+`bin/setup` cria um `.venv` que enxerga os bindings GObject do sistema e
 instala as ferramentas nas versões de `uv.lock`. Não é necessário ativar o
 venv: os scripts selecionam o interpretador automaticamente. Para escolher
 outro Python, use `SERIFA_PYTHON=/caminho/python3` antes do comando; ele precisa
@@ -48,20 +48,20 @@ precisar atualizar dependências, usando `uv lock --upgrade` e revisando o diff.
 ## Verifique sua mudança
 
 ```sh
-bin/conferir                   # Ruff
-bin/testes                     # suíte completa
-bin/testes tests.test_document # um módulo durante o desenvolvimento
-bin/testes --cobertura         # relatório de cobertura
+bin/lint                   # Ruff
+bin/test                     # suíte completa
+bin/test tests.test_document # um módulo durante o desenvolvimento
+bin/test --coverage         # relatório de cobertura
 ```
 
 Os testes gráficos exigem um servidor gráfico. Com `mutter` instalado, o
 script usa um compositor Wayland headless e um barramento D-Bus próprios.
-Para inspecionar as janelas na sua sessão, use `bin/testes --na-tela`.
+Para inspecionar as janelas na sua sessão, use `bin/test --show-windows`.
 
 Outra opção é instalar Xvfb e executar como a CI:
 
 ```sh
-SERIFA_ISOLADO=1 xvfb-run -a bin/testes
+SERIFA_TEST_ISOLATED=1 xvfb-run -a bin/test
 ```
 
 Sem servidor gráfico, os testes de janela são pulados. Sem `latexmk`, os
@@ -76,10 +76,16 @@ Corrija ou acrescente um teste de regressão quando mudar comportamento. Para
 uma alteração apenas de documentação, confira exemplos, links e a coerência
 com os scripts atuais.
 
+Se tiver GNU Make instalado, os atalhos equivalentes são `make setup`,
+`make doctor`, `make run`, `make lint`, `make test`, `make coverage` e
+`make install-hooks`. `make check` executa lint e depois a suíte, interrompendo
+se algum comando falhar. `make` ou `make help` lista os comandos. Make é
+opcional; use diretamente `bin/test` para passar opções ou selecionar módulos.
+
 Opcionalmente, ative o hook que roda lint e testes antes de cada push:
 
 ```sh
-bin/instalar-hooks
+bin/install-hooks
 ```
 
 Para desativá-lo, use `git config --unset core.hooksPath`.

@@ -1,7 +1,7 @@
-#!/usr/bin/bash
+#!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (C) 2026 Vinícius Bispo e colaboradores
-# Roda o mesmo que a CI antes de publicar. Instale com bin/instalar-hooks.
+# Run the CI checks before publishing. Enable with bin/install-hooks.
 cd "$(git rev-parse --show-toplevel)" || exit 1
-./bin/conferir || { echo "ruff reprovou; push cancelado"; exit 1; }
-./bin/testes   || { echo "suíte reprovou; push cancelado"; exit 1; }
+./bin/lint || { echo "Ruff failed; push cancelled"; exit 1; }
+./bin/test   || { echo "Tests failed; push cancelled"; exit 1; }

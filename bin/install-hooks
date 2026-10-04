@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Vinícius Bispo e colaboradores
+# Enable the versioned hooks. Undo with git config --unset core.hooksPath.
+cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
+git config core.hooksPath .githooks
+echo "Hooks enabled: .githooks (pre-push runs Ruff and tests)"

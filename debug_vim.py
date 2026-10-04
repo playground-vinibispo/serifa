@@ -8,11 +8,11 @@ filter. In normal mode, no printable key should ever get there.
 
 Variants, in increasing order of "how much of Serifa is around it":
 
-  minimo   GtkSourceView's official recipe, nothing more
+  minimal   GtkSourceView's official recipe, nothing more
   popup    the recipe + an inert capture controller ahead of vim, mimicking
            the one the completion popup used to have
   editor   the serifa.editor.Editor class, with vim turned on by its method
-  janela   the whole of Serifa, with the detector stuck to the real editor
+  window   the whole of Serifa, with the detector stuck to the real editor
 
 Run them in order and stop at the first one that leaks: the layer that came
 in there is the culprit.
@@ -28,7 +28,7 @@ gi.require_version("Gdk", "4.0")
 
 from gi.repository import Gdk, Gtk, GtkSource
 
-VARIANT = sys.argv[1] if len(sys.argv) > 1 else "minimo"
+VARIANT = sys.argv[1] if len(sys.argv) > 1 else "minimal"
 TEXT = "abcdef\nghijkl\nmnopqr\n"
 
 
@@ -53,7 +53,7 @@ def detector(view, report):
 
 
 def build_full_window(app):
-    """The 'janela' variant: the real Serifa, with the detector attached."""
+    """The 'window' variant: the real Serifa, with the detector attached."""
     import pathlib
     sys.path.insert(0, str(pathlib.Path(__file__).parent))
 
@@ -89,7 +89,7 @@ def build_full_window(app):
 
     import os
     os.environ.setdefault("SERIFA_DEBUG", "1")   # turns on the [bloco] report
-    print(f"variante=janela  vim={editor.vim_active}  "
+    print(f"variante=window  vim={editor.vim_active}  "
           f"overwrite={editor.get_overwrite()}", flush=True)
     print("Ponha o cursor dentro de {...} e tente: viw, depois ci{, depois vi{",
           flush=True)
@@ -97,7 +97,7 @@ def build_full_window(app):
 
 
 def build(app):
-    if VARIANT == "janela":
+    if VARIANT == "window":
         return build_full_window(app)
 
     if VARIANT == "editor":
