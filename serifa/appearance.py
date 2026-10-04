@@ -41,6 +41,24 @@ window.serifa-window {{
 .serifa-header windowtitle subtitle {{ color: #68788e; font-size: 11px; }}
 .serifa-header button {{ border-radius: 8px; padding: 8px 12px; }}
 .serifa-header button.suggested-action {{ background: #305fa8; color: white; }}
+.serifa-tabs {{
+    background: #f6f8fc; box-shadow: none; border: none; padding: 6px 12px 0;
+}}
+.serifa-tabs > box {{ background: transparent; box-shadow: none; }}
+.serifa-tabs tabbox {{ background: transparent; }}
+.serifa-tabs tab {{
+    min-width: 130px; border-radius: 8px 8px 0 0;
+    background: transparent; color: #68788e; box-shadow: none;
+}}
+.serifa-tabs tab:hover {{ background: #edf1f8; color: #24344b; }}
+.serifa-tabs tab:selected {{
+    background: #e8eef8; color: #244f91;
+    box-shadow: inset 0 -2px #305fa8;
+}}
+.serifa-tabs tab label {{ font-size: 12px; }}
+.serifa-tabs tab:selected label {{ font-weight: 600; }}
+.serifa-tabs .serifa-tab-controls {{ padding: 0 4px 4px 8px; }}
+.serifa-tabs .serifa-tab-controls button {{ border-radius: 7px; }}
 textview.serifa-editor {{
     font-family: "{FONT}", "Red Hat Mono", monospace;
     font-size: {BODY_SIZE}pt; background: #ffffff; color: #24344b;
@@ -85,6 +103,11 @@ window.serifa-dark { background: #202937; color: #dce5f2;
 .serifa-dark .serifa-tools, .serifa-dark .serifa-outline,
 .serifa-dark .serifa-preview-tools, .serifa-dark .serifa-diagnostics {
  background: #253041; border-color: #3a485b; }
+.serifa-dark .serifa-tabs { background: #202937; }
+.serifa-dark .serifa-tabs tab { color: #acbed6; }
+.serifa-dark .serifa-tabs tab:hover { background: #2a3648; color: #dce5f2; }
+.serifa-dark .serifa-tabs tab:selected {
+ background: #2c3d55; color: #dce9ff; box-shadow: inset 0 -2px #91b8f5; }
 .serifa-dark textview.serifa-editor { background: #1d2633; color: #dce5f2; }
 .serifa-dark .serifa-preview { background: #17202d; }
 .serifa-dark .serifa-pane-title, .serifa-dark .serifa-outline row,
