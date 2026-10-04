@@ -211,6 +211,12 @@ pelo controlador que a janela instala em si mesma — reconhece a sequência
 `v` → `i`/`a` → sinal. O `v` segue para o vim, que entra em modo visual de
 verdade; o `i` e o sinal são consumidos antes do filtro.
 
+## Contribuir
+
+Código, documentação, relatos de bugs e testes em outras distribuições são
+bem-vindos. Veja o [guia de contribuição](CONTRIBUTING.md) para preparar o
+ambiente, escolher onde mexer e abrir um PR com as verificações necessárias.
+
 ## Desenvolvimento
 
 Instale [uv](https://docs.astral.sh/uv/getting-started/installation/) e as
