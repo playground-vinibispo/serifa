@@ -1,8 +1,9 @@
-#!/usr/bin/bash
-# O gi (PyGObject) está no Python do sistema, não no Python do mise.
-exec /usr/bin/python3.12 -c "
+#!/usr/bin/env bash
+SERIFA_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Passar a raiz como argumento mantém caminhos com espaços e aspas intactos.
+exec "$SERIFA_ROOT/bin/python" -c '
 import sys
-sys.path.insert(0, '$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)')
+sys.path.insert(0, sys.argv.pop(1))
 from serifa.main import main
 sys.exit(main())
-" "$@"
+' "$SERIFA_ROOT" "$@"

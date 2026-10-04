@@ -8,15 +8,15 @@ on:
 jobs:
   conferir:
     name: análise estática
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - run: uv run --group dev ruff check .
+      - run: uv run --locked --group dev ruff check .
 
   testes:
     name: suíte
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -34,9 +34,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
 
       - name: ambiente
-        run: |
-          uv venv --python "$(command -v python3)" --system-site-packages .venv
-          uv pip install --python .venv/bin/python --group dev
+        run: bin/preparar
 
       # O GTK4 não tem backend offscreen; o Xvfb dá o servidor gráfico de que
       # os testes de janela precisam. Os que dependem do latexmk se pulam
