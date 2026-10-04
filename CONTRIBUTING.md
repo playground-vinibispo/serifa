@@ -141,6 +141,12 @@ Remova informações pessoais dos exemplos e logs antes de publicar. Para uma
 sugestão, explique a tarefa de escrita que você quer realizar e onde encontra
 atrito hoje.
 
+## Uso de agentes de código
+
+As convenções específicas para agentes estão em [AGENTS.md](AGENTS.md).
+Contribuições feitas com auxílio de agentes seguem as mesmas verificações e
+revisão descritas neste guia.
+
 ## Licença das contribuições
 
 As contribuições de código ao Serifa são recebidas sob a mesma licença do
