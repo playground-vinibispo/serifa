@@ -1,13 +1,13 @@
-#!/usr/bin/bash
-# Prepara o ambiente de desenvolvimento.
-#
-# O --system-site-packages não é opcional: o PyGObject vem do sistema, e um
-# venv isolado não enxergaria gi, GtkSourceView nem Poppler. O --python
-# aponta para o Python do sistema pelo mesmo motivo -- é nele que os bindings
-# estão instalados.
+#!/usr/bin/env bash
+# O PyGObject vem do sistema: o venv precisa de --system-site-packages.
 set -e
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
-uv venv --clear --python /usr/bin/python3.12 --system-site-packages .venv
-uv pip install --python .venv/bin/python --group dev
-echo
-echo "pronto. bin/testes e bin/conferir já usam o .venv."
+if ! command -v uv >/dev/null; then
+    echo "Instale uv para preparar o ambiente: https://docs.astral.sh/uv/getting-started/installation/" >&2
+    exit 1
+fi
+SERIFA_SYSTEM_PYTHON="$(bin/python --system -c 'import sys; print(sys.executable)')"
+uv venv --allow-existing --python "$SERIFA_SYSTEM_PYTHON" --system-site-packages .venv
+uv sync --locked --no-install-project --no-python-downloads
+bin/python --check
+echo "pronto. bin/serifa, bin/testes e bin/conferir já usam o .venv."

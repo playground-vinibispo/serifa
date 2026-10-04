@@ -19,6 +19,76 @@ bin/serifa caminho/texto.tex   # abre um arquivo
 bin/serifa um.tex outro.tex    # abre os dois em abas
 ```
 
+## Instalação
+
+O Serifa é uma aplicação Linux. Instale primeiro as bibliotecas gráficas do
+sistema e use o Python que tenha acesso a elas. O launcher verifica Python
+3.12+, GTK 4.10+, libadwaita 1.5+, GtkSourceView 5, Poppler e Cairo sem abrir
+uma janela.
+
+### Ubuntu 24.04
+
+```sh
+sudo apt-get update
+sudo apt-get install python3 python3-gi python3-gi-cairo \
+  gir1.2-gtk-4.0 gir1.2-gtksource-5 gir1.2-adw-1 gir1.2-poppler-0.18
+```
+
+Os mesmos pacotes gráficos são instalados na CI. As versões necessárias estão
+nos repositórios do Ubuntu 24.04: [libadwaita](https://packages.ubuntu.com/noble/gir1.2-adw-1)
+e [GtkSourceView](https://packages.ubuntu.com/noble/gir1.2-gtksource-5).
+
+### Fedora
+
+```sh
+sudo dnf install python3 python3-gobject python3-cairo \
+  gtk4 gtksourceview5 libadwaita poppler-glib
+```
+
+Use uma versão do Fedora cujos pacotes atendam aos mínimos acima. Os pacotes
+[GtkSourceView](https://packages.fedoraproject.org/pkgs/gtksourceview5/gtksourceview5/)
+e [Poppler](https://packages.fedoraproject.org/pkgs/poppler/poppler-glib/)
+são distribuídos pelo Fedora; `bin/python --check` verifica a instalação local.
+
+### Baixar e abrir
+
+```sh
+git clone https://github.com/playground-vinibispo/serifa.git
+cd serifa
+bin/python --check
+bin/serifa
+```
+
+Para compilar PDFs, instale também `latexmk` e TeX. Um documento simples com
+pdfLaTeX pode usar:
+
+```sh
+# Ubuntu
+sudo apt-get install latexmk texlive-latex-base
+
+# Fedora
+sudo dnf install latexmk texlive-latex
+```
+
+Documentos com fontes, idiomas, imagens ou pacotes adicionais podem exigir
+outros pacotes TeX. O editor pode abrir textos sem `latexmk`; a compilação
+precisa dessas ferramentas.
+
+O launcher prefere o `.venv` do projeto, depois `/usr/bin/python3` e por fim
+`python3` do PATH, usando o primeiro que passa na verificação. Isso evita que
+um Python isolado do mise ou pyenv esconda os bindings do sistema. Para escolher
+explicitamente um interpretador:
+
+```sh
+SERIFA_PYTHON=/caminho/python3 bin/python --check
+SERIFA_PYTHON=/caminho/python3 bin/serifa
+```
+
+Uma escolha explícita incompatível produz um erro, sem trocar silenciosamente
+de interpretador. Se o `.venv` estiver desatualizado, execute `bin/preparar`
+novamente. Não instale PyGObject pelo pip para compensar bibliotecas do sistema
+ausentes.
+
 ## Por que GTK4 e não Electron ou Tauri
 
 Um editor de texto é feito de três coisas caras: leiaute de texto, realce de
@@ -143,20 +213,25 @@ verdade; o `i` e o sinal são consumidos antes do filtro.
 
 ## Desenvolvimento
 
+Instale [uv](https://docs.astral.sh/uv/getting-started/installation/) e as
+bibliotecas gráficas descritas em **Instalação**, depois execute:
+
 ```sh
-bin/preparar          # cria o .venv e instala ruff e coverage
+bin/preparar          # prepara .venv com as versões do uv.lock
 bin/conferir          # ruff, o mesmo que a CI roda
 bin/testes            # a suíte
 bin/testes --cobertura
 bin/instalar-hooks    # opcional: pre-push roda os dois
 ```
 
-O `bin/preparar` cria o venv com `--system-site-packages` sobre o Python do
-sistema, e isso não é detalhe: o PyGObject vem do sistema, e um venv isolado
-não enxergaria `gi`, GtkSourceView nem Poppler. Instalar PyGObject por pip
-criaria uma segunda cópia cega às bibliotecas GObject instaladas. O efeito
-colateral bom é que o `coverage` passa a rodar no mesmo interpretador dos
-testes, o que antes era impossível.
+O `bin/preparar` seleciona um Python compatível fora do `.venv`, prepara o
+ambiente com `--system-site-packages` e sincroniza Ruff e coverage com
+`uv sync --locked`. Assim os bindings GObject continuam vindo do sistema e
+as ferramentas de desenvolvimento seguem as versões do `uv.lock`. A
+preparação pode ser repetida sem apagar o `.venv` inteiro.
+
+Para atualizar deliberadamente as ferramentas, use `uv lock --upgrade` e
+revise a alteração de `uv.lock` antes de rodar `bin/preparar` novamente.
 
 A CI roda os dois em cada push e PR. Os testes que precisam de `latexmk` se
 pulam sozinhos, para não baixar um texlive inteiro no runner; os de janela
@@ -215,6 +290,7 @@ já aconteceu:
 | `test_tabs` | documentos independentes, ações da aba ativa, fechamento e aparência compartilhada |
 | `test_preview_scroll` | redesenho das páginas ao rolar e atualização da prévia ao abrir |
 | `test_visual_workflow` | controles de aparência, sumário, indicadores do PDF e persistência |
+| `test_runtime` | erros de dependências e respeito ao interpretador escolhido explicitamente |
 
 ## Estrutura
 
@@ -238,13 +314,7 @@ serifa/
 
 ## Requisitos
 
-A aplicação requer Python 3.12 ou superior com PyGObject e as bibliotecas do
-sistema GTK4, GtkSourceView 5, libadwaita e Poppler (incluindo o binding Cairo).
-Para compilar documentos, instale `latexmk` e uma distribuição TeX com os
-pacotes usados no seu documento. `libspelling` e o dicionário de português são
-opcionais. O desenvolvimento usa `uv`, Ruff e coverage.
-
-O `bin/serifa` chama `/usr/bin/python3.12` de propósito: o `gi` está no Python
-do sistema. Os scripts ainda fixam esse caminho; em sistemas com outra
-versão, é necessário ajustá-los para o Python que tenha acesso aos bindings
-GObject. A instalação por distribuição ainda precisa ser documentada.
+Veja **Instalação** para os pacotes por distribuição e `bin/python --check`
+para verificar o interpretador e as bibliotecas locais. `libspelling` e um
+dicionário de português são opcionais; a aplicação funciona sem corretor.
+O desenvolvimento usa `uv`, Ruff e coverage, com versões em `uv.lock`.

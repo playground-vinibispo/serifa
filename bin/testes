@@ -1,4 +1,4 @@
-#!/usr/bin/bash
+#!/usr/bin/env bash
 # Suíte da Serifa.
 #   bin/testes                       tudo
 #   bin/testes -v                    verboso
@@ -23,13 +23,13 @@ elif [ -z "$SERIFA_ISOLADO" ] && command -v mutter >/dev/null; then
     exec dbus-run-session -- mutter --headless --no-x11 \
         --virtual-monitor 1280x800 --wayland-display="$SOQUETE" -- \
         env -u DISPLAY WAYLAND_DISPLAY="$SOQUETE" SERIFA_ISOLADO=1 \
+        GDK_BACKEND=wayland GSK_RENDERER="${GSK_RENDERER:-cairo}" \
         ADW_DISABLE_PORTAL=1 GTK_A11Y=none \
         "$0" "$@" 2> >(grep -vE '^(libmutter|\(mutter|mutter|Gdk-Message|A connection to the bus)' >&2)
 fi
 
-# O venv do uv, quando existe; senão o Python do sistema, que é onde o gi vive.
-PY=".venv/bin/python"
-[ -x "$PY" ] || PY="/usr/bin/python3.12"
+# O mesmo interpretador e a mesma verificação usados para abrir a aplicação.
+PY="bin/python"
 
 if [ "$1" = "--cobertura" ]; then
     shift

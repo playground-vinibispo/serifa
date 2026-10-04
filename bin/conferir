@@ -1,4 +1,3 @@
-#!/usr/bin/bash
-# Análise estática. Roda o mesmo que a CI roda.
+#!/usr/bin/env bash
 cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
-exec uv run --group dev ruff check .
+exec bin/python -m ruff check .
