@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Vinícius Bispo e colaboradores
+
 r"""LaTeX wrappers: \textbf{...} and relatives.
 
 A text operation, not a widget: it takes the buffer and the command. It lives

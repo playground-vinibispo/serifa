@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Vinícius Bispo e colaboradores
 # Seleciona um Python com os bindings gráficos do sistema, sem abrir janela.
 set -e
 SERIFA_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

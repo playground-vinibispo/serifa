@@ -134,3 +134,10 @@ Um `.tex` mínimo e a mensagem de erro ajudam mais que um documento inteiro.
 Remova informações pessoais dos exemplos e logs antes de publicar. Para uma
 sugestão, explique a tarefa de escrita que você quer realizar e onde encontra
 atrito hoje.
+
+## Licença das contribuições
+
+As contribuições de código ao Serifa são recebidas sob a mesma licença do
+projeto, [GPL-3.0-only](LICENSE). Ao enviar uma contribuição, confirme que você
+tem direito de disponibilizá-la nesses termos. Preserve os avisos existentes e
+identifique a licença e a origem de código de terceiros, quando houver.

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Vinícius Bispo e colaboradores
+
 """Bisecting vim mode: from the official recipe up to the whole of Serifa.
 
 Every key that reaches the bubble phase is a key vim's context did NOT

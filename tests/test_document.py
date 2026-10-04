@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Vinícius Bispo e colaboradores
+
 """The open file, with no window at all.
 
 The document only needs a buffer. These tests run in milliseconds, unlike the

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Vinícius Bispo e colaboradores
+
 """Block delimitation -- the pure part of `vi{`.
 
 A pure function, testable without a window, and not by chance the only piece

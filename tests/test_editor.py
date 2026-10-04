@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Vinícius Bispo e colaboradores
+
 """Editing behaviours: auto-pairing, word count, the vim cycle."""
 
 import unittest

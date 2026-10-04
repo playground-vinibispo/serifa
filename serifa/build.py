@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Vinícius Bispo e colaboradores
+
 r"""Asynchronous compilation and reading of the LaTeX log.
 
 There are two modes, and what tells them apart is what each one writes to disk.

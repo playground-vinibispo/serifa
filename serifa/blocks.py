@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Vinícius Bispo e colaboradores
+
 r"""Delimited blocks -- what vim calls a text object.
 
 This exists because GtkSourceView's visual mode has no text objects. The

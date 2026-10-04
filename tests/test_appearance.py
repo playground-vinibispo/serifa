@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Vinícius Bispo e colaboradores
+
 """Typography and the column measure.
 
 No colours: the palette is the writer's choice, and the attempt to impose one

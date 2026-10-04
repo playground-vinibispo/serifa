@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Vinícius Bispo e colaboradores
+
 """The PDF pane.
 
 Renders with Poppler straight into cairo -- no PNGs on disk in between, which

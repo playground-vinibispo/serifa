@@ -324,3 +324,25 @@ Veja **Instalação** para os pacotes por distribuição e `bin/python --check`
 para verificar o interpretador e as bibliotecas locais. `libspelling` e um
 dicionário de português são opcionais; a aplicação funciona sem corretor.
 O desenvolvimento usa `uv`, Ruff e coverage, com versões em `uv.lock`.
+
+## Licença
+
+O Serifa é distribuído sob a **GNU General Public License, versão 3 apenas**
+(`GPL-3.0-only`). Veja o texto integral em [LICENSE](LICENSE).
+
+A licença permite uso comercial e venda de cópias. Ao distribuir o Serifa ou
+uma versão derivada, é necessário cumprir a GPLv3, incluindo disponibilizar
+o código-fonte correspondente e preservar os direitos dos destinatários de
+modificar e redistribuir. Saiba mais na
+[FAQ oficial da GNU](https://www.gnu.org/licenses/gpl-faq.html#DoesTheGPLAllowMoney).
+
+Copyright (C) 2026 Vinícius Bispo e colaboradores.
+
+Este programa é software livre: você pode redistribuí-lo e/ou modificá-lo sob
+os termos da GNU General Public License, versão 3, publicada pela Free Software
+Foundation. É distribuído na esperança de ser útil, mas **sem qualquer garantia**,
+inclusive garantias implícitas de comercialização ou adequação a um propósito
+específico. Consulte a licença para os termos completos.
+
+A licença do editor não altera a licença dos documentos LaTeX ou PDFs que você
+cria com ele.
