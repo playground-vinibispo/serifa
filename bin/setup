@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (C) 2026 Vinícius Bispo e colaboradores
-# O PyGObject vem do sistema: o venv precisa de --system-site-packages.
+# PyGObject comes from the system; the venv needs --system-site-packages.
 set -e
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 if ! command -v uv >/dev/null; then
-    echo "Instale uv para preparar o ambiente: https://docs.astral.sh/uv/getting-started/installation/" >&2
+    echo "Install uv to set up the environment: https://docs.astral.sh/uv/getting-started/installation/" >&2
     exit 1
 fi
 SERIFA_SYSTEM_PYTHON="$(bin/python --system -c 'import sys; print(sys.executable)')"
 uv venv --allow-existing --python "$SERIFA_SYSTEM_PYTHON" --system-site-packages .venv
 uv sync --locked --no-install-project --no-python-downloads
 bin/python --check
-echo "pronto. bin/serifa, bin/testes e bin/conferir já usam o .venv."
+echo "Ready. bin/serifa, bin/test and bin/lint use the .venv."

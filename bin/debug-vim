@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Vinícius Bispo e colaboradores
+SERIFA_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+case "${1:-minimal}" in
+    minimal|popup|editor|window) ;;
+    --help|-h)
+        echo 'Usage: bin/debug-vim [minimal|popup|editor|window]'
+        exit 0 ;;
+    *)
+        echo 'Unknown scenario. Use minimal, popup, editor or window.' >&2
+        exit 2 ;;
+esac
+exec "$SERIFA_ROOT/bin/python" "$SERIFA_ROOT/debug_vim.py" "$@"

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (C) 2026 Vinícius Bispo e colaboradores
-# Seleciona um Python com os bindings gráficos do sistema, sem abrir janela.
+# Select a Python with the system graphics bindings without opening a window.
 set -e
 SERIFA_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SERIFA_SYSTEM_ONLY=0
@@ -27,9 +27,9 @@ for SERIFA_CANDIDATE in "${SERIFA_CANDIDATES[@]}"; do
     fi
     if SERIFA_ERROR="$("$SERIFA_CANDIDATE" "$SERIFA_ROOT/bin/runtime.py" 2>&1)"; then
         if [ "${1:-}" = "--check" ]; then
-            "$SERIFA_CANDIDATE" -c 'import sys; print("Python e bibliotecas gráficas OK:", sys.executable)'
+            "$SERIFA_CANDIDATE" -c 'import sys; print("Python and graphics libraries OK:", sys.executable)'
             if ! command -v latexmk >/dev/null; then
-                echo "Aviso: instale latexmk e TeX para compilar documentos." >&2
+                echo "Warning: install latexmk and TeX to compile documents." >&2
             fi
             exit 0
         fi
@@ -38,10 +38,10 @@ for SERIFA_CANDIDATE in "${SERIFA_CANDIDATES[@]}"; do
     SERIFA_ERRORS+="$SERIFA_ERROR"$'\n'
 done
 
-printf '%s\n' "Não foi encontrado um Python compatível com as bibliotecas do Serifa." >&2
+printf '%s\n' "No Python compatible with the Serifa libraries was found." >&2
 if [ -n "$SERIFA_ERRORS" ]; then
     printf '%s' "$SERIFA_ERRORS" >&2
 fi
-printf '%s\n' "Instale as dependências do sistema descritas no README." \
-    "Para escolher outro interpretador: SERIFA_PYTHON=/caminho/python3 bin/python --check" >&2
+printf '%s\n' "Install the system dependencies described in README." \
+    "To select another interpreter: SERIFA_PYTHON=/path/to/python3 bin/python --check" >&2
 exit 1

@@ -9,7 +9,7 @@ import sys
 
 def check() -> None:
     if sys.version_info < (3, 12):  # noqa: UP036 — checks candidate interpreters
-        raise RuntimeError("Python 3.12 ou superior é necessário")
+        raise RuntimeError("Python 3.12 or newer is required")
     gi = importlib.import_module("gi")
     for namespace, version in (("Gtk", "4.0"), ("Adw", "1"),
                                ("GtkSource", "5"), ("Poppler", "0.18")):
@@ -20,9 +20,9 @@ def check() -> None:
     gtk = importlib.import_module("gi.repository.Gtk")
     adw = importlib.import_module("gi.repository.Adw")
     if not hasattr(gtk, "FileDialog"):
-        raise RuntimeError("GTK 4.10 ou superior é necessário (Gtk.FileDialog)")
+        raise RuntimeError("GTK 4.10 or newer is required (Gtk.FileDialog)")
     if not hasattr(adw, "AlertDialog"):
-        raise RuntimeError("libadwaita 1.5 ou superior é necessária (Adw.AlertDialog)")
+        raise RuntimeError("libadwaita 1.5 or newer is required (Adw.AlertDialog)")
 
 
 if __name__ == "__main__":

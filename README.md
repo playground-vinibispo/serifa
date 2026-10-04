@@ -85,7 +85,7 @@ SERIFA_PYTHON=/caminho/python3 bin/serifa
 ```
 
 Uma escolha explícita incompatível produz um erro, sem trocar silenciosamente
-de interpretador. Se o `.venv` estiver desatualizado, execute `bin/preparar`
+de interpretador. Se o `.venv` estiver desatualizado, execute `bin/setup`
 novamente. Não instale PyGObject pelo pip para compensar bibliotecas do sistema
 ausentes.
 
@@ -219,40 +219,55 @@ ambiente, escolher onde mexer e abrir um PR com as verificações necessárias.
 
 ## Desenvolvimento
 
+Os comandos de desenvolvimento usam nomes e opções em inglês. Os antigos
+`bin/preparar`, `bin/conferir`, `bin/testes`, `bin/instalar-hooks` e
+`bin/diagnostico-vim` foram substituídos por `bin/setup`, `bin/lint`, `bin/test`,
+`bin/install-hooks` e `bin/debug-vim`. As opções agora são `--coverage` e
+`--show-windows`; atualize seus aliases ou automações locais.
+
 Instale [uv](https://docs.astral.sh/uv/getting-started/installation/) e as
 bibliotecas gráficas descritas em **Instalação**, depois execute:
 
 ```sh
-bin/preparar          # prepara .venv com as versões do uv.lock
-bin/conferir          # ruff, o mesmo que a CI roda
-bin/testes            # a suíte
-bin/testes --cobertura
-bin/instalar-hooks    # opcional: pre-push roda os dois
+bin/setup            # prepara .venv com as versões do uv.lock
+bin/lint             # ruff, o mesmo que a CI roda
+bin/test             # a suíte
+bin/test --coverage
+bin/install-hooks    # opcional: pre-push roda os dois
 ```
 
-O `bin/preparar` seleciona um Python compatível fora do `.venv`, prepara o
+Se tiver GNU Make instalado, os atalhos equivalentes são `make setup`,
+`make doctor`, `make run`, `make lint`, `make test`, `make coverage` e
+`make install-hooks`. `make check` executa lint e depois a suíte, interrompendo
+se algum comando falhar. `make` ou `make help` lista os comandos. Make é
+opcional; use diretamente `bin/test` para passar opções ou selecionar módulos.
+
+O `bin/setup` seleciona um Python compatível fora do `.venv`, prepara o
 ambiente com `--system-site-packages` e sincroniza Ruff e coverage com
 `uv sync --locked`. Assim os bindings GObject continuam vindo do sistema e
 as ferramentas de desenvolvimento seguem as versões do `uv.lock`. A
 preparação pode ser repetida sem apagar o `.venv` inteiro.
 
 Para atualizar deliberadamente as ferramentas, use `uv lock --upgrade` e
-revise a alteração de `uv.lock` antes de rodar `bin/preparar` novamente.
+revise a alteração de `uv.lock` antes de rodar `bin/setup` novamente.
 
 A CI roda os dois em cada push e PR. Os testes que precisam de `latexmk` se
 pulam sozinhos, para não baixar um texlive inteiro no runner; os de janela
 rodam sob Xvfb, porque o GTK4 não tem backend offscreen.
 
-Use `bin/testes --cobertura` para obter os números atuais. Os testes do preview
+Use `bin/test --coverage` para obter os números atuais. Os testes do preview
 incluem navegação entre páginas e renderização depois da rolagem; a aparência
 final também precisa de inspeção visual.
+
+Para diagnosticar o modo Vim, use `bin/debug-vim minimal`, `popup`, `editor`
+ou `window`; `bin/debug-vim --help` lista os cenários.
 
 ## Testes
 
 ```sh
-bin/testes                    # tudo
-bin/testes -v                 # verboso
-bin/testes tests.test_blocks  # um módulo
+bin/test                    # tudo
+bin/test -v                 # verboso
+bin/test tests.test_blocks  # um módulo
 ```
 
 A suíte usa `unittest` da biblioteca padrão no Python com acesso ao `gi` e às
@@ -264,9 +279,9 @@ aplicação, montar a janela, chamar `present()` e bombear o laço principal à
 mão (`tests/support.py`). Nada toca em arquivo seu — cada caso ganha uma pasta
 temporária, e o estado de sessão é desviado para lá.
 
-Quando há `mutter` instalado, o `bin/testes` abre as janelas num mutter
+Quando há `mutter` instalado, o `bin/test` abre as janelas num mutter
 headless próprio, com D-Bus próprio: nada aparece na sua tela nem rouba o foco
-enquanto a suíte roda. `bin/testes --na-tela` roda na sessão atual, para ver.
+enquanto a suíte roda. `bin/test --show-windows` roda na sessão atual, para ver.
 Na CI, sem mutter, quem dá o servidor gráfico é o `xvfb-run`. Os testes
 gráficos se pulam sozinhos quando não há servidor gráfico nenhum.
 
@@ -274,7 +289,7 @@ Se o backend gráfico escolhido pelo ambiente não funcionar com o mutter
 headless, execute explicitamente com Wayland e renderização Cairo:
 
 ```sh
-GDK_BACKEND=wayland GSK_RENDERER=cairo bin/testes
+GDK_BACKEND=wayland GSK_RENDERER=cairo bin/test
 ```
 
 Vale dizer o que cada grupo guarda, porque quase todos nasceram de um bug que
@@ -297,6 +312,7 @@ já aconteceu:
 | `test_preview_scroll` | redesenho das páginas ao rolar e atualização da prévia ao abrir |
 | `test_visual_workflow` | controles de aparência, sumário, indicadores do PDF e persistência |
 | `test_runtime` | erros de dependências e respeito ao interpretador escolhido explicitamente |
+| `test_test_runner` | opções de cobertura, seleção de módulos e propagação de falhas |
 
 ## Estrutura
 
