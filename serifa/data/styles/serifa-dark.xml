@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<style-scheme id="serifa-dark" name="Serifa escuro" version="1.0">
+ <author>Serifa</author>
+ <description>Ink on a cool white writing surface</description>
+ <style name="text" foreground="#dce5f2" background="#1d2633"/>
+ <style name="selection" background="#354d70" foreground="#dce5f2"/>
+ <style name="search-match" background="#ffe5a3" foreground="#dce5f2"/>
+ <style name="cursor" foreground="#91b8f5"/>
+ <style name="def:comment" foreground="#92a2b8" italic="true"/>
+ <style name="def:keyword" foreground="#91b8f5"/>
+ <style name="def:statement" foreground="#91b8f5"/>
+ <style name="def:type" foreground="#91b8f5"/>
+ <style name="def:function" foreground="#91b8f5"/>
+ <style name="def:string" foreground="#99c8b8"/>
+ <style name="def:constant" foreground="#c4afe7"/>
+ <style name="def:special-char" foreground="#c4afe7"/>
+ <style name="def:note" foreground="#91b8f5" background="#304158"/>
+ <style name="bracket-match" foreground="#91b8f5" background="#354d70"/>
+</style-scheme>

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 import re
+from pathlib import Path
 
 import gi
 
@@ -60,6 +61,7 @@ class Editor(GtkSource.View):
 
     __gsignals__ = {
         # Emitted when the cursor moves, for the status bar.
+        "appearance-changed": (GObject.SignalFlags.RUN_FIRST, None, ()),
         "cursor-moved": (GObject.SignalFlags.RUN_FIRST, None, (int, int)),
     }
 
@@ -68,6 +70,12 @@ class Editor(GtkSource.View):
 
         self.buffer = GtkSource.Buffer()
         self.set_buffer(self.buffer)
+        schemes = GtkSource.StyleSchemeManager.get_default()
+        schemes.append_search_path(str(Path(__file__).parent / "data" / "styles"))
+        scheme = schemes.get_scheme("serifa")
+        if scheme is not None:
+            self.buffer.set_style_scheme(scheme)
+
 
         language = GtkSource.LanguageManager.get_default().get_language("latex")
         if language is not None:
@@ -94,6 +102,9 @@ class Editor(GtkSource.View):
         self.set_pixels_inside_wrap(LEADING // 2)
         self.add_css_class("serifa-editor")
         self._current_margin = -1
+        self.font_size = 11.5
+        self.measure = 74
+
 
         self._vim: GtkSource.VimIMContext | None = None
         self._vim_controller: Gtk.EventControllerKey | None = None
@@ -124,12 +135,20 @@ class Editor(GtkSource.View):
         is a loop.
         """
         if width > 0:
-            margin = margin_for(width, character_width(self))
+            margin = margin_for(width, character_width(self), self.measure)
             if margin != self._current_margin:
                 self._current_margin = margin
                 self.set_left_margin(margin)
                 self.set_right_margin(margin)
         GtkSource.View.do_size_allocate(self, width, height, baseline)
+
+    def adjust_writing(self, size_delta=0, measure_delta=0) -> None:
+        self.remove_css_class(f"serifa-font-{round(self.font_size * 2)}")
+        self.font_size = max(8, min(24, self.font_size + size_delta))
+        self.measure = max(40, min(100, self.measure + measure_delta))
+        self.add_css_class(f"serifa-font-{round(self.font_size * 2)}")
+        self.queue_resize()
+        self.emit("appearance-changed")
 
     # ------------------------------------------------------------------ vim
 

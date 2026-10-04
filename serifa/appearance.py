@@ -1,9 +1,7 @@
-r"""Typography and the width of the text column.
+r"""Visual design and the width of the text column.
 
-**Colours are not set here.** There was an attempt to impose a paper palette,
-with LaTeX markup receding and prose in full ink; it was reverted at the
-user's request, who prefers GtkSourceView's default scheme. A palette is the
-taste of whoever writes, and they have already chosen.
+The interface uses a cool paper palette and restrained syntax colours.
+The user authorized a full redesign, replacing the earlier default scheme.
 
 What remains is what is not taste: this is not a code editor. Line numbers, an
 80-column ruler and current-line highlighting are instruments for someone
@@ -28,16 +26,77 @@ MINIMUM_MARGIN = 24
 LEADING = 6           # pixels added above and below each line
 
 CSS = f"""
-/* Typography only. Colours come from the GtkSourceView scheme, which is the
-   user's choice. */
+window.serifa-window {{
+    background: #f6f8fc; color: #24344b;
+    --accent-bg-color: #305fa8; --accent-color: #305fa8;
+    --window-bg-color: #f6f8fc; --window-fg-color: #24344b;
+    --headerbar-bg-color: #f6f8fc; --headerbar-fg-color: #24344b;
+    --view-bg-color: #ffffff; --view-fg-color: #24344b;
+}}
+.serifa-header {{ padding: 10px 16px; background: #f6f8fc; box-shadow: none; }}
+.serifa-header windowtitle title {{ font-size: 16px; font-weight: 600; }}
+.serifa-header windowtitle subtitle {{ color: #68788e; font-size: 11px; }}
+.serifa-header button {{ border-radius: 8px; padding: 8px 12px; }}
+.serifa-header button.suggested-action {{ background: #305fa8; color: white; }}
 textview.serifa-editor {{
     font-family: "{FONT}", "Red Hat Mono", monospace;
-    font-size: {BODY_SIZE}pt;
+    font-size: {BODY_SIZE}pt; background: #ffffff; color: #24344b;
 }}
-.serifa-status {{
-    font-size: 0.85em;
+.serifa-tools {{
+    padding: 10px 22px; background: white;
+    border-bottom: 1px solid #e6ebf3;
 }}
+.serifa-tools button {{ background: transparent; color: #526882; }}
+.serifa-pane-title {{ font-weight: 600; font-size: 12px; color: #526882; }}
+.serifa-outline {{ background: #eef2f8; border-right: 1px solid #dfe6f0; }}
+.serifa-outline headerbar {{
+    min-height: 50px; background: transparent; box-shadow: none;
+}}
+.serifa-outline row {{
+    margin: 3px 12px; border-radius: 7px; padding: 5px 2px;
+    color: #526882; font-weight: normal;
+}}
+.serifa-outline row:hover {{ background: #e1e9f5; }}
+.serifa-outline row:selected {{ background: #d9e5f8; color: #244f91; }}
+.serifa-statusbar {{
+    padding: 9px 16px; background: #f6f8fc; border-top: 1px solid #dfe6f0;
+}}
+.serifa-status {{ font-size: 11px; color: #68788e; }}
+.serifa-diagnostics {{ padding: 12px 18px; background: #eef2f8; }}
+.serifa-preview {{ background: #e4eaf3; color: #526882; }}
+.serifa-preview-tools {{
+    padding: 10px 18px; background: #eef2f8; border-bottom: 1px solid #d6dfed;
+}}
+.serifa-preview-tools button {{ color: #526882; }}
+.serifa-empty {{ padding: 40px; color: #526882; }}
+.serifa-window paned > separator {{ background: #d6dfed; min-width: 1px; }}
 """
+
+CSS += """
+window.serifa-dark { background: #202937; color: #dce5f2;
+ --window-bg-color: #202937; --window-fg-color: #dce5f2;
+ --view-bg-color: #253041; --view-fg-color: #dce5f2;
+ --headerbar-bg-color: #202937; --headerbar-fg-color: #dce5f2;
+}
+.serifa-dark .serifa-header, .serifa-dark .serifa-statusbar { background: #202937; }
+.serifa-dark .serifa-tools, .serifa-dark .serifa-outline,
+.serifa-dark .serifa-preview-tools, .serifa-dark .serifa-diagnostics {
+ background: #253041; border-color: #3a485b; }
+.serifa-dark textview.serifa-editor { background: #1d2633; color: #dce5f2; }
+.serifa-dark .serifa-preview { background: #17202d; }
+.serifa-dark .serifa-pane-title, .serifa-dark .serifa-outline row,
+.serifa-dark .serifa-status, .serifa-dark .serifa-tools button,
+.serifa-dark .serifa-preview-tools button,
+.serifa-dark .serifa-preview-tools label, .serifa-dark .serifa-empty { color: #acbed6; }
+.serifa-dark .serifa-outline row:selected { background: #354d70; color: #e6efff; }
+.serifa-dark .serifa-outline row:hover { background: #304158; }
+.serifa-dark paned > separator { background: #3a485b; }
+"""
+
+CSS += "\n".join(
+    f"textview.serifa-editor.serifa-font-{size} {{ font-size: {size / 2}pt; }}"
+    for size in range(16, 49)
+)
 
 
 def install_css() -> None:
@@ -57,12 +116,12 @@ def character_width(widget: Gtk.Widget) -> int:
     return max(1, metrics.get_approximate_char_width() // 1024)
 
 
-def margin_for(width: int, char_width: int) -> int:
+def margin_for(width: int, char_width: int, measure: int = MEASURE) -> int:
     """Side margin that centres a column of MEASURE characters.
 
     A pure function so it can be checked without a widget. On a narrow pane
     the arithmetic goes negative and the minimum applies -- the line is then
     shorter than the measure, which is the desired behaviour.
     """
-    column = MEASURE * char_width
+    column = measure * char_width
     return max(MINIMUM_MARGIN, (width - column) // 2)

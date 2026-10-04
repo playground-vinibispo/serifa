@@ -13,7 +13,7 @@ gi.require_version("GtkSource", "5")
 
 from gi.repository import Adw, Gio, GtkSource
 
-from .window import Window
+from .workspace import Workspace
 
 
 class Serifa(Adw.Application):
@@ -22,28 +22,34 @@ class Serifa(Adw.Application):
             application_id="br.ufmg.vinibispo.Serifa",
             flags=Gio.ApplicationFlags.HANDLES_OPEN,
         )
-        self._window: Window | None = None
 
     def do_startup(self) -> None:
         Adw.Application.do_startup(self)
         GtkSource.init()
 
     def do_activate(self) -> None:
-        self._ensure_window().present()
+        workspace = self._ensure_window()
+        if not workspace.tabs.get_n_pages():
+            workspace._new_document()
+        workspace.present()
 
     def do_open(self, files, n, hint) -> None:
-        window = self._ensure_window()
-        window.present()
         for file in files:
             path = file.get_path()
             if path:
-                window.open_file(Path(path))
-                break
+                self.open_document(Path(path))
 
-    def _ensure_window(self) -> Window:
-        if self._window is None:
-            self._window = Window(application=self)
-        return self._window
+    def open_document(self, path: Path):
+        workspace = self._ensure_window()
+        document = workspace.open_document(path)
+        workspace.present()
+        return document
+
+    def _ensure_window(self) -> Workspace:
+        for window in self.get_windows():
+            if isinstance(window, Workspace):
+                return window
+        return Workspace(application=self)
 
 
 def main() -> int:

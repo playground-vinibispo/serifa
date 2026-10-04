@@ -40,9 +40,12 @@ class Window(Adw.ApplicationWindow):
     __gtype_name__ = "SerifaWindow"
 
     def __init__(self, **kwargs) -> None:
+        restore_session = kwargs.pop("restore_session", True)
+        self._host = None
         super().__init__(**kwargs)
 
         self.set_title("Serifa")
+        self.add_css_class("serifa-window")
         self.set_default_size(1500, 940)
 
         self._build_timer = 0
@@ -56,7 +59,8 @@ class Window(Adw.ApplicationWindow):
 
         self._build_ui()
         self._install_actions()
-        self._restore_state()
+        if restore_session:
+            self._restore_state()
         self.connect("close-request", self._on_close_request)
 
         # In the capture phase GTK dispatches from the root down to the target,
@@ -151,6 +155,7 @@ class Window(Adw.ApplicationWindow):
         self._diagnostics_list.add_css_class("boxed-list")
         self._diagnostics_list.connect("row-activated", self._on_diagnostic_activated)
         diagnostics_scroller = Gtk.ScrolledWindow()
+        diagnostics_scroller.add_css_class("serifa-diagnostics")
         diagnostics_scroller.set_child(self._diagnostics_list)
         diagnostics_scroller.set_min_content_height(150)
         diagnostics_scroller.set_max_content_height(260)
@@ -174,6 +179,7 @@ class Window(Adw.ApplicationWindow):
         outline_scroller.set_child(self._outline)
         outline_scroller.set_vexpand(True)
         outline_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        outline_box.add_css_class("serifa-outline")
         outline_header = Adw.HeaderBar()
         outline_header.set_show_end_title_buttons(False)
         outline_header.set_title_widget(Adw.WindowTitle(title="Sumário"))
@@ -183,7 +189,8 @@ class Window(Adw.ApplicationWindow):
         self._sidebar_split = Adw.OverlaySplitView()
         self._sidebar_split.set_sidebar(outline_box)
         self._sidebar_split.set_content(editor_column)
-        self._sidebar_split.set_max_sidebar_width(280)
+        self._sidebar_split.set_min_sidebar_width(220)
+        self._sidebar_split.set_max_sidebar_width(260)
         self._sidebar_split.set_show_sidebar(True)
 
         # --- preview
@@ -197,6 +204,8 @@ class Window(Adw.ApplicationWindow):
 
         # --- header bar
         header = Adw.HeaderBar()
+        self._header = header
+        header.add_css_class("serifa-header")
 
         open_button = Gtk.Button(icon_name="document-open-symbolic")
         open_button.set_tooltip_text("Abrir (Ctrl+O)")
@@ -233,7 +242,14 @@ class Window(Adw.ApplicationWindow):
             )
             format_button.set_action_name(f"win.{name}")
             formatting.append(format_button)
-        header.pack_start(formatting)
+        tools = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        tools.add_css_class("serifa-tools")
+        pane_title = Gtk.Label(label="Texto", xalign=0)
+        pane_title.add_css_class("serifa-pane-title")
+        pane_title.set_hexpand(True)
+        tools.append(pane_title)
+        tools.append(formatting)
+        editor_column.prepend(tools)
 
         self._title = Adw.WindowTitle(title="Serifa", subtitle="nenhum arquivo")
         header.set_title_widget(self._title)
@@ -257,18 +273,26 @@ class Window(Adw.ApplicationWindow):
         zoom_section.append("Reduzir PDF", "win.zoom-out")
         zoom_section.append("Ajustar à largura", "win.zoom-fit")
         menu.append_section(None, zoom_section)
+        writing = Gio.Menu()
+        for label, action in (("Aumentar fonte", "font-larger"),
+                              ("Diminuir fonte", "font-smaller"),
+                              ("Estreitar texto", "column-narrower"),
+                              ("Alargar texto", "column-wider"),
+                              ("Alternar tema claro/escuro", "theme")):
+            writing.append(label, f"win.{action}")
+        menu.append_submenu("Aparência", writing)
         menu_button = Gtk.MenuButton(icon_name="open-menu-symbolic")
         menu_button.set_menu_model(menu)
         header.pack_end(menu_button)
 
-        self._vim_button = Gtk.ToggleButton(label="VIM")
+        self._vim_button = Gtk.ToggleButton(label="Vim")
         self._vim_button.set_tooltip_text("Modo vim (Ctrl+Alt+V)")
         self._vim_button.add_css_class("flat")
         self._vim_button.connect("toggled", self._on_vim_toggled)
         header.pack_end(self._vim_button)
 
-        self._build_button = Gtk.Button(icon_name="media-playback-start-symbolic")
-        self._build_button.set_tooltip_text("Compilar (Ctrl+B)")
+        self._build_button = Gtk.Button(label="Compilar")
+        self._build_button.set_tooltip_text("Compilar (F5 ou Ctrl+Enter)")
         self._build_button.add_css_class("suggested-action")
         self._build_button.connect("clicked", lambda *_: self.build())
         header.pack_end(self._build_button)
@@ -295,6 +319,7 @@ class Window(Adw.ApplicationWindow):
         self._status_build.add_css_class("dim-label")
 
         status_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=18)
+        status_bar.add_css_class("serifa-statusbar")
         status_bar.set_margin_start(12)
         status_bar.set_margin_end(12)
         status_bar.set_margin_top(4)
@@ -341,6 +366,13 @@ class Window(Adw.ApplicationWindow):
             "zoom-fit": (self._preview.fit_width, "<Control>0"),
             "check": (self.check_text, "<Control><Shift>c"),
             "continuous": (self._toggle_continuous, None),
+            "font-larger": (lambda: self._editor.adjust_writing(size_delta=0.5), None),
+            "font-smaller": (lambda: self._editor.adjust_writing(size_delta=-0.5), None),
+            "column-narrower": (
+                lambda: self._editor.adjust_writing(measure_delta=-6), None
+            ),
+            "column-wider": (lambda: self._editor.adjust_writing(measure_delta=6), None),
+            "theme": (self._toggle_theme, None),
         }
         for name, command, _icon, _label in self.FORMATS:
             shortcuts[name] = (lambda c=command: self.format_text(c), None)
@@ -370,7 +402,7 @@ class Window(Adw.ApplicationWindow):
         dialog.set_filters(filters)
         if self._file:
             dialog.set_initial_folder(Gio.File.new_for_path(str(self._file.parent)))
-        dialog.open(self, None, self._on_file_chosen)
+        dialog.open(self._host or self, None, self._on_file_chosen)
 
     def _on_file_chosen(self, dialog, result) -> None:
         try:
@@ -380,7 +412,10 @@ class Window(Adw.ApplicationWindow):
         if file is None:
             return
         path = Path(file.get_path())
-        if not self._settle_pending(lambda: self.open_file(path)):
+        app = self.get_application()
+        if hasattr(app, "open_document"):
+            app.open_document(path)
+        elif not self._settle_pending(lambda: self.open_file(path)):
             self.open_file(path)
 
     def open_file(self, path: Path) -> None:
@@ -399,6 +434,8 @@ class Window(Adw.ApplicationWindow):
         pdf = Builder._pdf_for(path, path.parent)
         if pdf.exists():
             self._preview.load(pdf)
+        if self._continuous_build:
+            self.preview_build()
         # Gtk.FileDialog is modal and takes focus away; without handing it
         # back here, the next keys may never reach vim's context.
         self._editor.grab_focus()
@@ -418,7 +455,7 @@ class Window(Adw.ApplicationWindow):
         dialog.set_title("Salvar como")
         if self._file:
             dialog.set_initial_name(self._file.name)
-        dialog.save(self, None, self._on_destination_chosen)
+        dialog.save(self._host or self, None, self._on_destination_chosen)
 
     def _on_destination_chosen(self, dialog, result) -> None:
         try:
@@ -479,11 +516,13 @@ class Window(Adw.ApplicationWindow):
     def _on_build_started(self, _builder, preview: bool) -> None:
         self._status_build.set_label("prévia…" if preview else "compilando…")
         self._build_button.set_sensitive(False)
+        self._build_button.set_label("Compilando…")
 
     def _on_build_finished(
         self, _builder, success: bool, pdf: str, diagnostics, preview: bool
     ) -> None:
         self._build_button.set_sensitive(True)
+        self._build_button.set_label("Compilar")
         self._diagnostics = list(diagnostics)
 
         if pdf:
@@ -583,7 +622,9 @@ class Window(Adw.ApplicationWindow):
             clean = re.sub(r"\\[A-Za-z]+\*?|[{}]", "", title)
             label = Gtk.Label(label=" ".join(clean.split()))
             label.set_xalign(0.0)
-            label.set_ellipsize(3)  # PANGO_ELLIPSIZE_END
+            label.set_wrap(True)
+            label.set_max_width_chars(24)
+            label.set_tooltip_text(" ".join(clean.split()))
             label.set_margin_start(8 + 14 * LEVEL.get(command, 0))
             label.set_margin_end(8)
             label.set_margin_top(4)
@@ -594,6 +635,18 @@ class Window(Adw.ApplicationWindow):
             row.set_child(label)
             row.line_number = number
             self._outline.append(row)
+
+        cursor = self.buffer.get_iter_at_mark(self.buffer.get_insert())
+        self._select_section(cursor.get_line() + 1)
+
+    def _select_section(self, line: int) -> None:
+        selected = None
+        row = self._outline.get_first_child()
+        while row is not None:
+            if row.line_number <= line:
+                selected = row
+            row = row.get_next_sibling()
+        self._outline.select_row(selected)
 
     def _on_outline_activated(self, _list, row) -> None:
         number = getattr(row, "line_number", None)
@@ -649,6 +702,7 @@ class Window(Adw.ApplicationWindow):
 
     def _on_cursor_moved(self, _editor, line: int, column: int) -> None:
         self._status_position.set_label(f"{line}:{column}")
+        self._select_section(line)
 
     def _update_word_count(self) -> None:
         total = self._editor.count_words()
@@ -659,13 +713,34 @@ class Window(Adw.ApplicationWindow):
         if self._file is None:
             self._title.set_title("Serifa")
             self._title.set_subtitle("nenhum arquivo")
+            self._title.set_tooltip_text(None)
             return
         mark = " •" if self._dirty else ""
         self._title.set_title(f"{self._file.name}{mark}")
-        folder = str(self._file.parent).replace(str(Path.home()), "~")
-        self._title.set_subtitle(folder)
+        self._title.set_subtitle("")
+        self._title.set_tooltip_text(str(self._file))
+        if self._host is not None:
+            self._host._title(self._tab_page)
 
     # ------------------------------------------------------------- toggles
+
+    def _toggle_theme(self) -> None:
+        dark = not self.has_css_class("serifa-dark")
+        if dark:
+            self.add_css_class("serifa-dark")
+        else:
+            self.remove_css_class("serifa-dark")
+        scheme = GtkSource.StyleSchemeManager.get_default().get_scheme(
+            "serifa-dark" if dark else "serifa"
+        )
+        self.buffer.set_style_scheme(scheme)
+        if self._host is not None:
+            content = self._tab_page.get_child()
+            if dark:
+                content.add_css_class("serifa-dark")
+            else:
+                content.remove_css_class("serifa-dark")
+            self._host.sync_appearance(self)
 
     def _on_vim_toggled(self, button: Gtk.ToggleButton) -> None:
         vim = self._editor.toggle_vim(button.get_active())
@@ -730,7 +805,7 @@ class Window(Adw.ApplicationWindow):
 
     # ------------------------------------------------------------ closing
 
-    def _settle_pending(self, proceed) -> bool:
+    def _settle_pending(self, proceed, on_cancel=None) -> bool:
         """Asks before throwing away unsaved changes.
 
         Returns True when the action was deferred until the answer, and False
@@ -756,16 +831,23 @@ class Window(Adw.ApplicationWindow):
         dialog.set_default_response("save")
         dialog.set_close_response("cancel")
         dialog.choose(
-            self, None, lambda d, r: self._on_response(d, r, proceed)
+            self._host or self, None,
+            lambda d, r: self._on_response(d, r, proceed, on_cancel)
         )
         return True
 
-    def _on_response(self, dialog, result, proceed) -> None:
+    def _on_response(self, dialog, result, proceed, on_cancel=None) -> None:
         try:
             response = dialog.choose_finish(result)
         except GLib.Error:
+            if on_cancel:
+                on_cancel()
             return
+        if response == "cancel" and on_cancel:
+            on_cancel()
         self._apply_response(response, proceed)
+        if response == "save" and self._dirty and on_cancel:
+            on_cancel()
 
     def _apply_response(self, response: str, proceed) -> None:
         """The decision itself, kept apart from the dialog so it can be tested."""
@@ -787,12 +869,21 @@ class Window(Adw.ApplicationWindow):
             "vim": self._vim_button.get_active(),
             "continuous": self._continuous_build,
             "split": self._split.get_position(),
+            "dark": self.has_css_class("serifa-dark"),
+            "font_size": self._editor.font_size,
+            "measure": self._editor.measure,
         })
 
     def _restore_state(self) -> None:
         data = session.read(STATE)
         if not data:
             return
+        self._editor.adjust_writing(
+            size_delta=data.get("font_size", 11.5) - 11.5,
+            measure_delta=data.get("measure", 74) - 74,
+        )
+        if data.get("dark"):
+            self._toggle_theme()
         if data.get("vim"):
             self._vim_button.set_active(True)
         self._continuous_build = data.get("continuous", True)

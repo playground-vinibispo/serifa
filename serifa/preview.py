@@ -16,7 +16,7 @@ gi.require_version("Poppler", "0.18")
 
 from gi.repository import Gdk, Gtk, Poppler
 
-PAGE_GAP = 12
+PAGE_GAP = 26
 
 
 class Preview(Gtk.Box):
@@ -26,6 +26,30 @@ class Preview(Gtk.Box):
 
     def __init__(self) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
+        self.add_css_class("serifa-preview")
+        tools = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        tools.add_css_class("serifa-preview-tools")
+        title = Gtk.Label(label="PDF", xalign=0)
+        title.add_css_class("serifa-pane-title")
+        title.set_hexpand(True)
+        tools.append(title)
+        self._page_label = Gtk.Label(label="Sem páginas")
+        self._zoom_label = Gtk.Label(label="100%")
+        self._zoom_label.set_margin_start(8)
+        self._zoom_label.set_margin_end(8)
+        tools.append(self._page_label)
+        tools.append(self._zoom_label)
+        for icon, action, hint in (
+            ("zoom-out-symbolic", "win.zoom-out", "Reduzir"),
+            ("zoom-in-symbolic", "win.zoom-in", "Ampliar"),
+            ("zoom-fit-best-symbolic", "win.zoom-fit", "Ajustar à largura"),
+        ):
+            button = Gtk.Button(icon_name=icon)
+            button.add_css_class("flat")
+            button.set_action_name(action)
+            button.set_tooltip_text(hint)
+            tools.append(button)
+        self.append(tools)
 
         self._document: Poppler.Document | None = None
         self._zoom = 1.0
@@ -39,13 +63,18 @@ class Preview(Gtk.Box):
         self._scroller.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
         self._scroller.set_child(self._area)
         self._scroller.set_vexpand(True)
+        self._scroller.get_vadjustment().connect(
+            "value-changed", self._on_viewport_changed
+        )
         self._scroller.get_hadjustment().connect("changed", self._on_width_changed)
 
         self._empty = Gtk.Label()
         self._empty.set_markup(
-            "<span size='large'>Sem PDF ainda</span>\n"
-            "<span alpha='60%'>Ctrl+B compila</span>"
+            "<span size='large' weight='bold'>Seu texto, em página</span>\n\n"
+            "<span alpha='60%'>Abra um documento e compile com F5.\n"
+            "A prévia acompanha sua escrita.</span>"
         )
+        self._empty.add_css_class("serifa-empty")
         self._empty.set_justify(Gtk.Justification.CENTER)
         self._empty.set_vexpand(True)
 
@@ -132,6 +161,7 @@ class Preview(Gtk.Box):
 
     def _remeasure(self) -> None:
         if not self._document:
+            self._update_labels()
             return
         scale = self._scale()
         width = 0.0
@@ -143,6 +173,19 @@ class Preview(Gtk.Box):
         self._area.set_content_width(int(width + 2 * PAGE_GAP))
         self._area.set_content_height(int(height))
         self._area.queue_draw()
+        self._update_labels()
+
+    def _on_viewport_changed(self, *_args) -> None:
+        # GTK may reuse the DrawingArea render node after a scroll.
+        # Its node contains only pages visible during the previous draw.
+        self._area.queue_draw()
+        self._update_labels()
+
+    def _update_labels(self, *_args) -> None:
+        self._zoom_label.set_label(f"{self._zoom:.0%}")
+        self._page_label.set_label(
+            f"{self.current_page} / {self.pages}" if self.pages else "Sem páginas"
+        )
 
     def _draw(self, area: Gtk.DrawingArea, ctx, width: int, height: int) -> None:
         if not self._document:
@@ -163,9 +206,12 @@ class Preview(Gtk.Box):
             # Only rasterise what is (nearly) in view.
             if y + drawn_height >= visible_top - 200 and y <= visible_bottom + 200:
                 ctx.save()
-                # A hairline around the sheet, not a soft shadow: grey shadow
-                # under everything is what makes an interface look like a pile
-                # of cards.
+                # Layered translucent edges give the printed sheet depth.
+                for spread, alpha in ((7, 0.025), (4, 0.04), (2, 0.06)):
+                    ctx.set_source_rgba(0, 0, 0, alpha)
+                    ctx.rectangle(x - spread, y + 3 - spread,
+                                  drawn_width + 2 * spread, drawn_height + 2 * spread)
+                    ctx.fill()
                 ctx.set_source_rgba(0, 0, 0, 0.28)
                 ctx.rectangle(x - 1, y - 1, drawn_width + 2, drawn_height + 2)
                 ctx.fill()
