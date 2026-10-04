@@ -1,4 +1,6 @@
 #!/usr/bin/bash
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Vinícius Bispo e colaboradores
 # Aponta o git para os hooks versionados. Opcional, e reversível com
 #   git config --unset core.hooksPath
 cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1

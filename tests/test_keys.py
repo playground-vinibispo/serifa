@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Vinícius Bispo e colaboradores
+
 """Key routing through the window, and visual mode's text objects.
 
 These tests exist because of five wrong diagnoses in a row. Each one guards

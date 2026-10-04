@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Vinícius Bispo e colaboradores
+
 """What the window remembers between one launch and the next.
 
 Deliberately a small file: this is the only state that outlives the window,

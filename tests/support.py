@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Vinícius Bispo e colaboradores
+
 """Test scaffolding.
 
 The finding that makes the suite workable: **there is no need to run

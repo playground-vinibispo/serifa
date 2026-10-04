@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Vinícius Bispo e colaboradores
+
 """Context-aware completion.
 
 GtkSourceView cannot help here. A GtkSourceCompletionProvider of our own would

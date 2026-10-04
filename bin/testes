@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Vinícius Bispo e colaboradores
 # Suíte da Serifa.
 #   bin/testes                       tudo
 #   bin/testes -v                    verboso

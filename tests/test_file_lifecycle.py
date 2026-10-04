@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Vinícius Bispo e colaboradores
+
 """Saving, preview and the disk watcher.
 
 The editor's most important invariant lives here: **typing does not write to

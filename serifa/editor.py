@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Vinícius Bispo e colaboradores
+
 """The editor itself.
 
 A GtkSource.View set up for LaTeX. The less obvious parts:

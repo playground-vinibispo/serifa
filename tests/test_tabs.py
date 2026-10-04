@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Vinícius Bispo e colaboradores
+
 """Documents stay independent inside one tabbed window."""
 from tests.support import GraphicalCase, pump
 

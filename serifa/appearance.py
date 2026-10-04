@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Vinícius Bispo e colaboradores
+
 r"""Visual design and the width of the text column.
 
 The interface uses a cool paper palette and restrained syntax colours.

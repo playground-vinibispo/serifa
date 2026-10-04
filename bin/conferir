@@ -1,3 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Vinícius Bispo e colaboradores
 cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
 exec bin/python -m ruff check .

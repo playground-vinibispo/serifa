@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Vinícius Bispo e colaboradores
+
 r"""The open file: read it, save it, know whether it is dirty, watch the disk.
 
 This used to be scattered across the window, mixed with widget assembly and
