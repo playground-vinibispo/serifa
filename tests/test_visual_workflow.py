@@ -82,3 +82,50 @@ class TestVisualWorkflow(GraphicalCase):
         self.window._diagnostics_list.emit("row-activated", row)
         cursor = self.buffer.get_iter_at_mark(self.buffer.get_insert())
         self.assertEqual(cursor.get_line(), 2)
+
+    def test_diagnostic_foreground_follows_app_theme_not_desktop(self):
+        from gi.repository import Adw, Gtk
+
+        from serifa.build import Diagnostic
+        from tests.support import pump
+
+        manager = Adw.StyleManager.get_default()
+        original = manager.get_color_scheme()
+        self.window._diagnostics = [Diagnostic("warning", "Test warning", line=1)]
+        self.window._fill_diagnostics()
+        row = self.window._diagnostics_list.get_row_at_index(0)
+
+        def descendants(widget):
+            yield widget
+            child = widget.get_first_child()
+            while child is not None:
+                yield from descendants(child)
+                child = child.get_next_sibling()
+
+        try:
+            for dark in (False, True):
+                manager.set_color_scheme(
+                    Adw.ColorScheme.FORCE_LIGHT if dark else Adw.ColorScheme.FORCE_DARK
+                )
+                if self.window.has_css_class("serifa-dark") != dark:
+                    self.window._toggle_theme()
+                for state in (Gtk.StateFlags.NORMAL, Gtk.StateFlags.PRELIGHT,
+                              Gtk.StateFlags.SELECTED, Gtk.StateFlags.FOCUSED):
+                    with self.subTest(dark=dark, state=state):
+                        row.set_state_flags(state, True)
+                        pump(250)
+                        widgets = [row] + [
+                            widget for widget in descendants(row)
+                            if isinstance(widget, Gtk.Label | Gtk.Image)
+                        ]
+                        for widget in widgets:
+                            color = widget.get_style_context().get_color()
+                            brightness = (color.red + color.green + color.blue) / 3
+                            self.assertGreater(color.alpha, 0.95)
+                            if dark:
+                                self.assertGreater(brightness, 0.75)
+                            else:
+                                self.assertLess(brightness, 0.3)
+        finally:
+            row.set_state_flags(Gtk.StateFlags.NORMAL, True)
+            manager.set_color_scheme(original)

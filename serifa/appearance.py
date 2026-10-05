@@ -84,6 +84,13 @@ textview.serifa-editor {{
 }}
 .serifa-status {{ font-size: 11px; color: #68788e; }}
 .serifa-diagnostics {{ padding: 12px 18px; background: #eef2f8; }}
+/* ActionRow otherwise inherits the desktop theme, which can oppose our palette. */
+.serifa-diagnostics list, .serifa-diagnostics row {{
+    background: #ffffff; color: #24344b;
+}}
+.serifa-diagnostics row label, .serifa-diagnostics row image {{ color: inherit; }}
+.serifa-diagnostics row:hover {{ background: #e1e9f5; }}
+.serifa-diagnostics row:selected {{ background: #d9e5f8; }}
 .serifa-preview {{ background: #e4eaf3; color: #526882; }}
 .serifa-preview-tools {{
     padding: 10px 18px; background: #eef2f8; border-bottom: 1px solid #d6dfed;
@@ -116,6 +123,10 @@ window.serifa-dark { background: #202937; color: #dce5f2;
 .serifa-dark .serifa-preview-tools label, .serifa-dark .serifa-empty { color: #acbed6; }
 .serifa-dark .serifa-outline row:selected { background: #354d70; color: #e6efff; }
 .serifa-dark .serifa-outline row:hover { background: #304158; }
+.serifa-dark .serifa-diagnostics list, .serifa-dark .serifa-diagnostics row {
+ background: #2c394c; color: #dce5f2; }
+.serifa-dark .serifa-diagnostics row:hover { background: #34455d; }
+.serifa-dark .serifa-diagnostics row:selected { background: #354d70; }
 .serifa-dark paned > separator { background: #3a485b; }
 """
 
