@@ -1,5 +1,7 @@
 # Serifa
 
+<img src="serifa/data/icons/hicolor/scalable/apps/br.ufmg.vinibispo.Serifa.svg" alt="Símbolo do Serifa" width="96" height="96">
+
 Um editor de LaTeX de mesa, nativo, com preview do PDF ao lado, completação e
 modo vim num botão. Abra vários documentos em abas e ajuste o tema, a fonte
 e a largura do texto para sua escrita.
