@@ -4,13 +4,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
   <title>Serifa</title>
   <desc>A calligraphic ink S on a folded sheet of paper.</desc>
-  <path fill="#f6f8fc" stroke="#c6d1e0" stroke-width="8"
+  <path fill="#f6f8fc" stroke="#d5dce6" stroke-width="4"
         stroke-linejoin="round" d="M 88,24 H 336 L 456,144 V 456
         Q 456,488 424,488 H 88 Q 56,488 56,456 V 56 Q 56,24 88,24 Z"/>
-  <path fill="#d9e5f8" d="M 336,24 V 116 Q 336,144 364,144 H 456 Z"/>
-  <path fill="none" stroke="#9cafcc" stroke-width="8" stroke-linejoin="round"
+  <path fill="#e8edf5" d="M 336,24 V 116 Q 336,144 364,144 H 456 Z"/>
+  <path fill="none" stroke="#c2ccdb" stroke-width="3" stroke-linejoin="round"
         d="M 336,24 V 116 Q 336,144 364,144 H 456"/>
-  <path transform="translate(20 38) scale(.9)" fill="#24344b" d="
+  <path transform="translate(48 38) skewX(-7) scale(.9)" fill="#202c40" d="
     M 352,160
     C 348,137 329,122 299,122
     C 251,122 206,157 194,192
@@ -18,15 +18,15 @@
     L 270,294 C 312,316 334,344 319,377
     C 304,411 267,431 222,431
     C 173,431 147,404 153,375
-    C 157,355 171,344 184,346
-    C 196,348 199,360 193,369
-    C 184,382 182,393 194,403
+    C 158,354 174,343 184,347
+    C 191,351 190,359 184,365
+    C 172,379 175,394 194,403
     C 220,424 273,408 286,379
     C 300,349 275,329 239,309
     L 211,293 C 164,266 151,239 165,202
     C 184,150 242,111 298,111
     C 343,111 367,132 368,156
-    C 369,175 359,193 344,202
-    C 332,209 320,200 326,190
-    C 333,179 351,178 352,160 Z"/>
+    C 369,176 359,192 344,200
+    C 335,205 328,200 333,192
+    C 341,181 354,177 352,160 Z"/>
 </svg>
