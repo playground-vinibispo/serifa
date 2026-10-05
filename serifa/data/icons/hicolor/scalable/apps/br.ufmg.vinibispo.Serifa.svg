@@ -10,16 +10,7 @@
   <path fill="#e8edf5" d="M 336,24 V 116 Q 336,144 364,144 H 456 Z"/>
   <path fill="none" stroke="#c2ccdb" stroke-width="3" stroke-linejoin="round"
         d="M 336,24 V 116 Q 336,144 364,144 H 456"/>
-  <path fill="none" stroke="#202c40" stroke-width="10"
-        stroke-linecap="round" stroke-linejoin="round" d="
-    M 132,432
-    C 203,419 239,342 260,269
-    C 279,206 299,136 284,116
-    C 272,98 248,109 249,136
-    C 250,174 286,208 315,243
-    C 351,286 370,326 358,376
-    C 346,429 307,445 267,434
-    C 235,425 206,400 206,378
-    C 206,361 218,357 232,370
-    C 273,405 348,454 381,417"/>
+  <path fill="none" stroke="#202c40" stroke-width="9"
+        stroke-linecap="round" stroke-linejoin="round"
+        transform="translate(78 85) scale(1.15)" d="M 47,302 C 104,296 148,192 175,99 C 194,34 180,15 161,32 C 131,58 170,103 202,146 C 246,205 252,260 216,288 C 185,315 144,297 121,274 C 106,259 107,246 117,246 C 131,246 147,269 174,286 C 214,312 244,307 259,291"/>
 </svg>
