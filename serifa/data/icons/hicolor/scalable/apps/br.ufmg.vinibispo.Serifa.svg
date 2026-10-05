@@ -10,7 +10,7 @@
   <path fill="#e8edf5" d="M 336,24 V 116 Q 336,144 364,144 H 456 Z"/>
   <path fill="none" stroke="#c2ccdb" stroke-width="3" stroke-linejoin="round"
         d="M 336,24 V 116 Q 336,144 364,144 H 456"/>
-  <path fill="none" stroke="#202c40" stroke-width="9"
+  <path fill="none" stroke="#202c40" stroke-width="14"
         stroke-linecap="round" stroke-linejoin="round"
         transform="translate(78 85) scale(1.15)" d="M 47,302 C 104,296 148,192 175,99 C 194,34 180,15 161,32 C 131,58 170,103 202,146 C 246,205 252,260 216,288 C 185,315 144,297 121,274 C 106,259 107,246 117,246 C 131,246 147,269 174,286 C 214,312 244,307 259,291"/>
 </svg>
