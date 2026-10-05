@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- Copyright (C) 2026 Vinícius Bispo e colaboradores -->
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <title>Serifa</title>
+  <desc>A calligraphic ink S on a folded sheet of paper.</desc>
+  <path fill="#f6f8fc" stroke="#d5dce6" stroke-width="4"
+        stroke-linejoin="round" d="M 88,24 H 336 L 456,144 V 456
+        Q 456,488 424,488 H 88 Q 56,488 56,456 V 56 Q 56,24 88,24 Z"/>
+  <path fill="#e8edf5" d="M 336,24 V 116 Q 336,144 364,144 H 456 Z"/>
+  <path fill="none" stroke="#c2ccdb" stroke-width="3" stroke-linejoin="round"
+        d="M 336,24 V 116 Q 336,144 364,144 H 456"/>
+  <path fill="#202c40" d="
+    M 367,194
+    C 364,153 333,133 288,133
+    C 234,133 184,161 169,204
+    C 151,256 190,280 240,302
+    C 282,321 314,337 305,373
+    C 296,408 258,432 213,432
+    C 173,432 146,414 146,391
+    C 146,381 151,372 160,367
+    C 163,382 183,383 190,371
+    C 198,358 188,346 173,346
+    C 148,346 127,369 127,394
+    C 127,430 163,446 209,446
+    C 270,446 328,417 344,369
+    C 363,314 324,288 273,266
+    C 231,248 199,230 211,197
+    C 222,166 254,146 290,146
+    C 326,146 350,162 351,185
+    C 352,196 347,206 339,214
+    C 328,225 327,234 334,238
+    C 346,244 368,218 367,194 Z"/>
+</svg>

@@ -11,10 +11,11 @@ from pathlib import Path
 import gi
 
 gi.require_version("Gtk", "4.0")
+gi.require_version("Gdk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("GtkSource", "5")
 
-from gi.repository import Adw, Gio, GtkSource
+from gi.repository import Adw, Gdk, Gio, Gtk, GtkSource
 
 from .workspace import Workspace
 
@@ -29,6 +30,11 @@ class Serifa(Adw.Application):
     def do_startup(self) -> None:
         Adw.Application.do_startup(self)
         GtkSource.init()
+        display = Gdk.Display.get_default()
+        if display is not None:
+            icons = Gtk.IconTheme.get_for_display(display)
+            icons.add_search_path(str(Path(__file__).parent / "data" / "icons"))
+        Gtk.Window.set_default_icon_name(self.get_application_id())
 
     def do_activate(self) -> None:
         workspace = self._ensure_window()

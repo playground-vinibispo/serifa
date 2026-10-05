@@ -1,5 +1,7 @@
 # Serifa
 
+<img src="serifa/data/icons/hicolor/scalable/apps/br.ufmg.vinibispo.Serifa.svg" alt="Símbolo do Serifa" width="96" height="96">
+
 Um editor de LaTeX de mesa, nativo, com preview do PDF ao lado, completação e
 modo vim num botão. Abra vários documentos em abas e ajuste o tema, a fonte
 e a largura do texto para sua escrita.
@@ -31,7 +33,8 @@ uma janela.
 ```sh
 sudo apt-get update
 sudo apt-get install python3 python3-gi python3-gi-cairo \
-  gir1.2-gtk-4.0 gir1.2-gtksource-5 gir1.2-adw-1 gir1.2-poppler-0.18
+  gir1.2-gtk-4.0 gir1.2-gtksource-5 gir1.2-adw-1 gir1.2-poppler-0.18 \
+  librsvg2-common
 ```
 
 Os mesmos pacotes gráficos são instalados na CI. As versões necessárias estão
