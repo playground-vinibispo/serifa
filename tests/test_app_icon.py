@@ -31,5 +31,26 @@ class TestAppIcon(unittest.TestCase):
                     name, None, size, 1, Gtk.TextDirection.NONE, Gtk.IconLookupFlags(0)
                 )
                 self.assertIsNotNone(icon.get_file())
+                self.assertIsNotNone(icon.get_file().get_path())
                 path = Path(icon.get_file().get_path())
                 self.assertEqual(path.name, f"{name}.svg")
+
+    def test_bundled_theme_resolves_without_system_themes(self):
+        from gi.repository import Gtk
+
+        from serifa import main
+
+        icons_dir = Path(main.__file__).parent / "data" / "icons"
+        theme = Gtk.IconTheme.new()
+        theme.set_search_path([str(icons_dir)])
+        theme.set_theme_name("hicolor")
+        name = "br.ufmg.vinibispo.Serifa"
+        expected = icons_dir / "hicolor" / "scalable" / "apps" / f"{name}.svg"
+        for size in (16, 32, 64):
+            with self.subTest(size=size):
+                self.assertTrue(theme.has_icon(name))
+                icon = theme.lookup_icon(
+                    name, None, size, 1, Gtk.TextDirection.NONE, Gtk.IconLookupFlags(0)
+                )
+                self.assertIsNotNone(icon.get_file())
+                self.assertEqual(icon.get_file().get_path(), str(expected))

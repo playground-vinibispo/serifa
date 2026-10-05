@@ -1,0 +1,11 @@
+[Icon Theme]
+Name=Serifa application icons
+Comment=Bundled application icons for Serifa
+Directories=scalable/apps
+
+[scalable/apps]
+Size=128
+MinSize=16
+MaxSize=512
+Context=Applications
+Type=Scalable
